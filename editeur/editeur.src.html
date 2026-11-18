@@ -1,0 +1,1135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MSIG – DSP7000 editor</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #d9d6cf;
+  --accent: #2f5d8a; --audio: #2f7d4f; --ctl: #b5651d; --mod: #7a4fb0; --obj: #8a8a8a;
+  --node: #ffffff; --nodehead: #ecebe7; --sel: #2f5d8a; --warn: #a33;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1c1e; --panel: #232427; --ink: #e8e6e1; --muted: #9a978f; --line: #3a3b3f;
+    --accent: #7fb0e0; --audio: #5cc28a; --ctl: #e39a52; --mod: #b28ae6; --obj: #8f8f8f;
+    --node: #2a2b2f; --nodehead: #34363b; --sel: #7fb0e0; --warn: #e07070;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px;
+  border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 14px; margin: 0 12px 0 0; font-weight: 600; }
+header .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+button, select, input[type=text], input[type=number] { font: inherit; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 8px; }
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+label.chk { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); }
+main { display: grid; grid-template-columns: 1fr 340px; height: calc(100% - 47px - 26px); }
+#canvas { position: relative; overflow: hidden; }
+svg { width: 100%; height: 100%; display: block; cursor: grab; }
+svg.panning { cursor: grabbing; }
+aside { border-left: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 10px 12px; }
+aside h2 { font-size: 13px; margin: 6px 0 8px; }
+aside .sub { color: var(--muted); margin-bottom: 8px; }
+table.fields { width: 100%; border-collapse: collapse; }
+table.fields td { padding: 2px 3px; vertical-align: middle; border-bottom: 1px solid var(--line); }
+table.fields td.k { color: var(--muted); white-space: nowrap; width: 1%; }
+table.fields input, table.fields select { width: 100%; padding: 2px 4px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+textarea { width: 100%; min-height: 260px; font: 12px/1.35 Menlo, monospace; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 6px; }
+footer { height: 26px; padding: 4px 12px; border-top: 1px solid var(--line); background: var(--panel);
+  color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node rect.body { fill: var(--node); stroke: var(--line); }
+.node.sel rect.body { stroke: var(--sel); stroke-width: 2; }
+.node.undoc rect.body { stroke-dasharray: 4 3; }
+.node rect.head { fill: var(--nodehead); }
+.node text { fill: var(--ink); font-size: 11px; }
+.node text.t { font-weight: 600; }
+.node text.p { fill: var(--muted); font-size: 10px; }
+.node { cursor: move; }
+path.edge { fill: none; stroke-width: 1.6; opacity: .85; }
+path.cable { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
+circle.pin { cursor: crosshair; stroke: transparent; stroke-width: 9px; }
+circle.pin:hover { stroke: var(--accent); stroke-opacity: .35; }
+circle.pin.ok { stroke: var(--accent); stroke-opacity: .55; }
+circle.pin.dim { opacity: .25; }
+.pname { color: var(--muted); cursor: text; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pname:hover { color: var(--ink); text-decoration: underline dotted; }
+.tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.tabs button.on { border-color: var(--accent); color: var(--accent); }
+dialog { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+#screenCanvas { image-rendering: pixelated; border: 1px solid var(--line); background: #cfd8c4; }
+.row { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+.warn { color: var(--warn); }
+.modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.35); }
+.modal[hidden] { display: none; }
+.modal .box { min-width: 320px; max-width: 460px; padding: 16px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.modal #mText { margin-bottom: 12px; white-space: pre-wrap; }
+.modal #mInput { width: 100%; margin-bottom: 12px; }
+.modal .row { justify-content: flex-end; margin: 0; }
+.menu { position: relative; }
+body.native .menu, body.native #bQuit { display: none !important; }
+.menu .drop { position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 10; min-width: 200px;
+  display: flex; flex-direction: column; padding: 4px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
+.menu .drop[hidden] { display: none; }
+.menu .drop button { display: flex; justify-content: space-between; gap: 18px; border: 0; background: none;
+  text-align: left; padding: 5px 8px; }
+.menu .drop button:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.menu .drop kbd { font: inherit; color: var(--muted); }
+.menu .drop button:hover:not(:disabled) kbd { color: inherit; }
+.menu .drop hr { width: 100%; border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+@media (max-width: 760px) { main { grid-template-columns: 1fr; grid-template-rows: 1fr 45%; }
+  aside { border-left: 0; border-top: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>MSIG</h1>
+  <span id="pname" class="pname" title="Patch name: click to rename"></span>
+  <button id="bNew">New…</button>
+  <button id="bRandom" title="Generate a random but playable patch (Shift-click: choose the seed)">Random</button>
+  <button id="bOpen">Open…</button>
+  <button id="bSave" title="Save (⌘S)">Save</button>
+  <button id="bSaveAs" title="Save as (⇧⌘S)">Save as…</button>
+  <input type="file" id="file" accept=".sig,.txt" hidden>
+  <div class="menu">
+    <button id="bEdit" aria-haspopup="menu">Edit ▾</button>
+    <div id="mEdit" class="drop" role="menu" hidden>
+      <button data-act="undo">Undo<kbd>⌘Z</kbd></button>
+      <button data-act="redo">Redo<kbd>⇧⌘Z</kbd></button>
+      <hr>
+      <button data-act="cut">Cut<kbd>⌘X</kbd></button>
+      <button data-act="copy">Copy<kbd>⌘C</kbd></button>
+      <button data-act="paste">Paste<kbd>⌘V</kbd></button>
+      <button data-act="duplicate">Duplicate<kbd>⌘D</kbd></button>
+      <button data-act="delete">Delete<kbd>⌫</kbd></button>
+      <hr>
+      <button data-act="rename">Rename patch…</button>
+    </div>
+  </div>
+  <span class="sep"></span>
+  <select id="baud" title="RS-232 speed: must match the speed set on the DSP">
+    <option>115200</option><option>57600</option><option>38400</option><option>19200</option><option>9600</option>
+  </select>
+  <select id="stopbits" title="Stop bits: must match the setting of the DSP (2 by default). If Get algorithm or Screen replies arrive garbled, check this first.">
+    <option value="2">2 stop bits</option><option value="1">1 stop bit</option>
+  </select>
+  <select id="gwPort" hidden title="Serial port of the adapter"></select>
+  <button id="bConnect" class="primary">Connect DSP</button>
+  <button id="bGet" disabled>Get algorithm</button>
+  <button id="bSend" disabled>Send to DSP</button>
+  <button id="bScreen" disabled>Screen</button>
+  <button id="bDbase" hidden title="Reads the list of modules and their parameters from the DSP (once; a few seconds to several minutes depending on the unit)">Load module database</button>
+  <button id="bDbaseFile" hidden title="Uses a module database file instead of reading it from the DSP (.sbf text file, .syx dump)">Import database…</button>
+  <input type="file" id="dbFile" accept=".sbf,.SBF,.syx,.SYX,.txt" hidden>
+  <span class="sep"></span>
+  <label class="chk"><input type="checkbox" id="fAudio" checked><span class="dot" style="background:var(--audio)"></span>audio</label>
+  <label class="chk"><input type="checkbox" id="fCtl" checked><span class="dot" style="background:var(--ctl)"></span>control</label>
+  <label class="chk"><input type="checkbox" id="fMod" checked><span class="dot" style="background:var(--mod)"></span>mod</label>
+  <label class="chk"><input type="checkbox" id="fObj"><span class="dot" style="background:var(--obj)"></span>menus</label>
+  <button id="bLayout" title="Recompute the layout">Auto layout</button>
+  <button id="bQuit" hidden title="Stop MSIG and release the serial port">Quit</button>
+</header>
+<main>
+  <div id="canvas"><svg id="svg"><g id="vp"><g id="edges"></g><g id="nodes"></g><g id="drag"></g></g></svg></div>
+  <aside>
+    <div class="tabs"><button id="tMod" class="on">Module</button><button id="tText">Text</button><button id="tAdd">Add</button></div>
+    <div id="pMod"><div class="sub">Click a module to edit it.</div></div>
+    <div id="pText" hidden>
+      <textarea id="txt" spellcheck="false"></textarea>
+      <div class="row"><button id="bApply">Apply text</button></div>
+    </div>
+    <div id="pAdd" hidden>
+      <div class="row"><select id="addType" style="flex:1"></select></div>
+      <div class="row"><input type="text" id="addName" placeholder="module name" style="flex:1"><button id="bAdd">Add</button></div>
+      <div class="sub">The module is inserted before TAIL with the default values from the DSP database; its audio inputs are connected to "null".</div>
+      <div class="sub" id="addHelp"></div>
+    </div>
+  </aside>
+</main>
+<footer id="status">Ready. Open a .sig file or connect the DSP (Chrome or Edge required for the serial link).</footer>
+<div id="modal" class="modal" hidden><div class="box" role="dialog" aria-modal="true">
+  <div id="mText"></div><input type="text" id="mInput">
+  <div class="row"><button id="mCancel">Cancel</button><button id="mOk" class="primary">OK</button></div>
+</div></div>
+<dialog id="dScreen">
+  <canvas id="screenCanvas" width="720" height="192"></canvas>
+  <div class="row"><button id="bScreenRefresh">Refresh</button><button id="bScreenPng">Save PNG</button><button id="bScreenClose">Close</button></div>
+</dialog>
+
+<script>/*SIGFILE*/</script>
+<script>/*RANDOM*/</script>
+<script>
+"use strict";
+// Base des modules : integree au fichier (version personnelle) ou lue sur le DSP par la passerelle.
+let DEFS = /*DEFS*/ || {};
+const S = window.Sigfile;
+const $ = id => document.getElementById(id);
+// Fenetre native (MSIG.app) : menus et dialogues de macOS ; sinon onglet de navigateur.
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const MODKEY = IS_MAC ? "Cmd" : "Ctrl";
+const NATIVE = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.msig);
+const nativePost = m => { if (NATIVE) window.webkit.messageHandlers.msig.postMessage(m); };
+// Question dans la page (remplace confirm et prompt, indisponibles ou bloquants selon le navigateur) :
+// ask(texte) -> true/false ; ask(texte, valeur) -> texte saisi ou null.
+function ask(message, def) {
+  return new Promise(res => {
+    const isPrompt = def !== undefined, m = $("modal"), inp = $("mInput");
+    $("mText").textContent = message;
+    inp.hidden = !isPrompt;
+    inp.value = isPrompt ? def : "";
+    m.hidden = false;
+    const done = v => { m.hidden = true; $("mOk").onclick = $("mCancel").onclick = m.onkeydown = null; res(v); };
+    $("mOk").onclick = () => done(isPrompt ? inp.value : true);
+    $("mCancel").onclick = () => done(isPrompt ? null : false);
+    m.onkeydown = e => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); $("mOk").click(); }
+      else if (e.key === "Escape") { e.preventDefault(); $("mCancel").click(); }
+    };
+    setTimeout(() => { if (isPrompt) { inp.focus(); inp.select(); } else $("mOk").focus(); }, 0);
+  });
+}
+const asking = () => !$("modal").hidden;
+const status = (msg, warn) => { const s = $("status"); s.textContent = msg; s.className = warn ? "warn" : ""; };
+
+// ---------------------------------------------------------------- etat
+// Patch minimal : HEADM (entrees 1-2 reliees directement aux sorties 1-2) puis TAIL.
+function blankPatch(title) {
+  const t = (title || "New").replace(/"/g, "'").slice(0, 19);
+  return `HEADM adc 2 2 adc-in1 adc-in2 "${t}" "" 0\nTAIL as\n`;
+}
+let doc = S.parse(blankPatch());
+let fileName = "algo.sig";
+let selected = null;
+const view = { x: 40, y: 40, k: 1 };
+const NODE_W = 178, ROW = 15, HEAD = 22;
+
+const TYPE_COLOR = { audio_in: "--audio", audio_out: "--audio", ctl_in: "--ctl", ctl_out: "--ctl",
+  mod_in: "--mod", mod_out: "--mod", obj_in: "--obj", obj_out: "--obj" };
+const kind = t => (t || "").replace(/_(in|out)$/, "");
+const headName = () => (doc.mods.find(m => /^HEAD/.test(m.type)) || { name: "adc" }).name;
+const isHead = m => /^HEAD/.test(m.type);
+
+// Change un argument (S.withArg refait la liste si c'est un nombre de sorties, d'entrees...).
+function setArg(m, i, v) { m.args = S.withArg(DEFS[m.type], m.args, i, v, headName()); }
+
+function labelsOf(m) {
+  const l = S.fieldLabels(DEFS[m.type], m.args);
+  return l || m.args.map((_, i) => ({ label: "arg" + (i + 1), type: null }));
+}
+
+// type d'une sortie : definition de l'aide, sinon deduit du nom
+function outType(modName, port) {
+  const m = doc.mods.find(x => x.name === modName);
+  const o = m && S.outputsOf(DEFS[m.type], m.args).find(x => x.name === port);
+  if (o) return o.type;
+  if (port === "obj" || port === "nullobj") return "obj_out";
+  if (port === "zero" || /^global/.test(port)) return "ctl_out";
+  if (m && /KNOB|SWITCH|C_/.test(m.type)) return "ctl_out";
+  return "audio_out";
+}
+
+function edgeKind(e) {
+  const m = doc.mods[e.toIndex];
+  const l = labelsOf(m)[e.arg];
+  return kind((l && l.type) || outType(e.from, e.port));
+}
+
+// ---------------------------------------------------------------- disposition
+function autoLayout() {
+  const names = doc.mods.map(m => m.name);
+  const edges = S.connections(doc);
+  const depth = {};
+  doc.mods.forEach((m, i) => {
+    let d = 0;
+    edges.filter(e => e.toIndex === i).forEach(e => {
+      const si = names.indexOf(e.from);
+      if (si < i && !isHead(doc.mods[si]) && edgeKind(e) !== "obj") d = Math.max(d, (depth[e.from] || 0) + 1);
+      if (si < i && isHead(doc.mods[si])) d = Math.max(d, 1);
+    });
+    const ui = DEFS[m.type] && DEFS[m.type].group === "interface";
+    depth[m.name] = isHead(m) ? 0 : ui ? 0 : Math.max(d, 1);
+  });
+  const maxD = Math.max(1, ...Object.values(depth));
+  const colY = {};
+  doc.mods.forEach(m => {
+    if (m.type === "TAIL") { m.pos = { x: -400, y: -400 }; return; }
+    const isUi = DEFS[m.type] && DEFS[m.type].group === "interface";
+    const col = isHead(m) ? 0 : isUi ? -1 : depth[m.name];
+    const y = colY[col] || 0;
+    m.pos = { x: (col + 1) * (NODE_W + 70), y };
+    colY[col] = y + nodeHeight(m) + 18;
+  });
+  const head = doc.mods.find(isHead);
+  if (head) head.posOut = { x: (maxD + 2) * (NODE_W + 70), y: 0 };
+}
+
+// ---------------------------------------------------------------- rendu
+function nodeParts(m) {
+  // HEADM est affiche en deux blocs : entrees du preset (sorties du module) et sorties du preset
+  const labels = labelsOf(m);
+  const names = new Set(doc.mods.map(x => x.name));
+  const inputs = [];
+  m.args.forEach((a, i) => {
+    const l = labels[i];
+    const conn = S.asConnection(a, names);
+    if (conn || /^(audio|mod|obj)_in$/.test(l.type || "") || (revealCtl && l.type === "ctl_in")) inputs.push({ i, label: l.label, conn, type: l.type });
+  });
+  const outs = new Set();
+  S.outputsOf(DEFS[m.type], m.args).forEach(o => { if (!/^(null|zero|nullobj|global\d*)$/.test(o.name)) outs.add(o.name); });
+  S.connections(doc).filter(e => e.from === m.name).forEach(e => outs.add(e.port));
+  return { inputs, outputs: [...outs] };
+}
+function nodeHeight(m) {
+  const p = nodeParts(m);
+  if (isHead(m)) return HEAD + 8 + ROW * Math.max(p.outputs.length, 1);
+  return HEAD + 8 + ROW * Math.max(p.inputs.length, p.outputs.length, 1);
+}
+
+const portPos = {}; // "mod.port" -> {x,y} (sorties) ; "mod#i" -> {x,y} (entrees)
+function render() {
+  $("pname").textContent = patchName() || "(untitled)";
+  nativePost({ type: "state", title: patchName(), dirty: hist.i !== hist.saved });
+  const showK = { audio: $("fAudio").checked, ctl: $("fCtl").checked, mod: $("fMod").checked, obj: $("fObj").checked };
+  const gN = $("nodes"), gE = $("edges");
+  gN.innerHTML = ""; gE.innerHTML = "";
+  for (const k in portPos) delete portPos[k];
+  doc.mods.forEach(m => {
+    if (m.type === "TAIL") return;
+    if (!m.pos) m.pos = { x: 0, y: 0 };
+    const p = nodeParts(m);
+    if (isHead(m)) {
+      drawNode(gN, m, m.pos, "inputs " + m.name, [], p.outputs.filter(o => o !== "obj"), "out");
+      if (!m.posOut) m.posOut = { x: m.pos.x + 900, y: m.pos.y };
+      drawNode(gN, m, m.posOut, "outputs " + m.name, p.inputs.filter(x => kind(x.type) !== "obj"), [], "in");
+    } else drawNode(gN, m, m.pos, m.type + "  " + m.name, p.inputs, p.outputs);
+  });
+  S.connections(doc).forEach(e => {
+    const k = edgeKind(e);
+    if (!showK[k]) return;
+    const a = portPos[e.from + "." + e.port], b = portPos[e.to + "#" + e.arg];
+    if (!a || !b) return;
+    const dx = Math.max(40, Math.abs(b.x - a.x) / 2);
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", `M${a.x},${a.y} C${a.x + dx},${a.y} ${b.x - dx},${b.y} ${b.x},${b.y}`);
+    path.setAttribute("class", "edge");
+    path.style.stroke = `var(${TYPE_COLOR[k + "_in"] || "--obj"})`;
+    gE.appendChild(path);
+  });
+  applyView();
+}
+
+function svgEl(tag, attrs, parent) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(el);
+  return el;
+}
+
+function drawNode(parent, m, pos, title, inputs, outputs, part) {
+  const rows = Math.max(inputs.length, outputs.length, 1);
+  const h = HEAD + 8 + ROW * rows;
+  const g = svgEl("g", { class: "node" + (selected === m ? " sel" : "") + (DEFS[m.type] && S.fieldLabels(DEFS[m.type], m.args) ? "" : " undoc"),
+    transform: `translate(${pos.x},${pos.y})` }, parent);
+  svgEl("rect", { class: "body", width: NODE_W, height: h, rx: 6 }, g);
+  svgEl("rect", { class: "head", width: NODE_W, height: HEAD, rx: 6 }, g);
+  const t = svgEl("text", { class: "t", x: 8, y: 15 }, g); t.textContent = title.slice(0, 28);
+  inputs.forEach((inp, r) => {
+    const y = HEAD + 10 + r * ROW;
+    svgEl("circle", { cx: 0, cy: y, r: 4, class: "pin", "data-mod": m.name, "data-in": inp.i, style: `fill:var(${TYPE_COLOR[inp.type] || "--obj"})` }, g);
+    const tx = svgEl("text", { class: "p", x: 7, y: y + 3.5 }, g); tx.textContent = inp.label;
+    portPos[m.name + "#" + inp.i] = { x: pos.x, y: pos.y + y };
+  });
+  outputs.forEach((o, r) => {
+    const y = HEAD + 10 + r * ROW;
+    svgEl("circle", { cx: NODE_W, cy: y, r: 4, class: "pin", "data-mod": m.name, "data-out": o, style: `fill:var(${TYPE_COLOR[outType(m.name, o)] || "--obj"})` }, g);
+    const tx = svgEl("text", { class: "p", x: NODE_W - 7, y: y + 3.5, "text-anchor": "end" }, g); tx.textContent = o;
+    portPos[m.name + "." + o] = { x: pos.x + NODE_W, y: pos.y + y };
+  });
+  // deplacement
+  g.addEventListener("pointerdown", ev => {
+    ev.stopPropagation();
+    if (ev.target.classList.contains("pin")) return startCable(ev, ev.target);
+    select(m);
+    const sx = ev.clientX, sy = ev.clientY, p0 = { ...pos };
+    const target = part === "in" ? "posOut" : "pos";
+    const move = e2 => { m[target] = { x: p0.x + (e2.clientX - sx) / view.k, y: p0.y + (e2.clientY - sy) / view.k }; render(); };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); record(); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  });
+}
+
+// pan / zoom
+function applyView() { $("vp").setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`); }
+(() => {
+  const svg = $("svg");
+  svg.addEventListener("pointerdown", ev => {
+    const sx = ev.clientX - view.x, sy = ev.clientY - view.y;
+    svg.classList.add("panning");
+    const move = e2 => { view.x = e2.clientX - sx; view.y = e2.clientY - sy; applyView(); };
+    const up = () => { svg.classList.remove("panning"); window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  });
+  svg.addEventListener("wheel", ev => {
+    ev.preventDefault();
+    const r = svg.getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top;
+    const k2 = Math.min(2.5, Math.max(0.25, view.k * Math.exp(-ev.deltaY * 0.0015)));
+    view.x = mx - (mx - view.x) * k2 / view.k; view.y = my - (my - view.y) * k2 / view.k; view.k = k2;
+    applyView();
+  }, { passive: false });
+})();
+
+// ---------------------------------------------------------------- inspecteur
+function allOutputs() {
+  const list = [];
+  doc.mods.forEach(m => {
+    if (m.type === "TAIL") return;
+    const outs = new Set(nodeParts(m).outputs);
+    S.outputsOf(DEFS[m.type], m.args).forEach(o => { if (!/^global/.test(o.name)) outs.add(o.name); });
+    outs.forEach(o => list.push({ v: m.name + "-" + o, type: outType(m.name, o) }));
+  });
+  return list;
+}
+
+function select(m) { selected = m; showTab("Mod"); renderInspector(); render(); }
+
+function renderInspector() {
+  const p = $("pMod");
+  const m = selected;
+  if (!m) { p.innerHTML = '<div class="sub">Click a module to edit it.</div>'; return; }
+  const d = DEFS[m.type];
+  const labels = labelsOf(m);
+  const names = new Set(doc.mods.map(x => x.name));
+  const outs = allOutputs();
+  p.innerHTML = "";
+  const h = document.createElement("h2"); h.textContent = m.type + " " + m.name; p.appendChild(h);
+  const sub = document.createElement("div"); sub.className = "sub";
+  sub.textContent = d ? "Group: " + (d.group || "?") + (S.fieldLabels(d, m.args) ? "" : " — parameter count does not match the DSP database") : "Module not in the DSP database: generic labels.";
+  p.appendChild(sub);
+  const tb = document.createElement("table"); tb.className = "fields"; p.appendChild(tb);
+  m.args.forEach((a, i) => {
+    const tr = tb.insertRow();
+    const k = tr.insertCell(); k.className = "k";
+    const col = TYPE_COLOR[labels[i].type];
+    k.innerHTML = (col ? `<span class="dot" style="background:var(${col})"></span>` : "") ;
+    k.appendChild(document.createTextNode(labels[i].label));
+    const L = labels[i];
+    k.title = [L.desc, L.min !== undefined ? "min " + L.min : "", L.max !== undefined ? "max " + L.max : "", L.def !== undefined ? "default " + L.def : ""].filter(Boolean).join(" · ");
+    const c = tr.insertCell();
+    const conn = S.asConnection(a, names);
+    if (conn) {
+      const sel = document.createElement("select");
+      const want = labels[i].type ? kind(labels[i].type) : null;
+      outs.filter(o => !want || kind(o.type) === want || o.v === a).forEach(o => {
+        const op = document.createElement("option"); op.value = op.textContent = o.v; if (o.v === a) op.selected = true; sel.appendChild(op);
+      });
+      if (![...sel.options].some(o => o.value === a)) { const op = new Option(a, a, true, true); sel.appendChild(op); }
+      const lit = new Option("(numeric value)", "__lit__"); sel.appendChild(lit);
+      sel.onchange = () => { setArg(m, i, sel.value === "__lit__" ? "0" : sel.value); changed(); };
+      c.appendChild(sel);
+    } else {
+      const inp = document.createElement("input"); inp.type = "text"; inp.value = a;
+      inp.onchange = () => { let v = inp.value.trim(); if (!v) v = '""'; setArg(m, i, v); changed(); };
+      c.appendChild(inp);
+      if (labels[i].type && /_in$/.test(labels[i].type) && labels[i].type !== "spec") {
+        const b = document.createElement("button"); b.textContent = "connect"; b.title = "Replace the value with a connection";
+        b.onclick = () => { const o = outs.find(x => kind(x.type) === kind(labels[i].type)); if (o) { m.args[i] = o.v; changed(); } };
+        const c2 = tr.insertCell(); c2.appendChild(b);
+      }
+    }
+  });
+  const row = document.createElement("div"); row.className = "row";
+  const raw = document.createElement("input"); raw.type = "text"; raw.style.flex = "1";
+  raw.value = [m.type, m.name].concat(m.args).join(" ");
+  const bRaw = document.createElement("button"); bRaw.textContent = "Replace line";
+  bRaw.onclick = () => {
+    const t = S.tokenize(raw.value);
+    if (t.length < 2) return status("Invalid line.", true);
+    const old = m.name; m.type = t[0]; m.name = t[1]; m.args = t.slice(2);
+    if (old !== m.name) renameRefs(old, m.name);
+    changed();
+  };
+  row.appendChild(raw); row.appendChild(bRaw); p.appendChild(row);
+  if (!isHead(m) && m.type !== "TAIL") {
+    const bDel = document.createElement("button"); bDel.textContent = "Delete this module";
+    bDel.onclick = () => deleteModule(m); p.appendChild(bDel);
+  }
+}
+
+function renameRefs(oldName, newName) {
+  doc.mods.forEach(x => x.args = x.args.map(a => a.startsWith(oldName + "-") ? newName + a.slice(oldName.length) : a));
+}
+
+function deleteModule(m) {
+  const names = new Set(doc.mods.map(x => x.name));
+  const hn = headName();
+  doc.mods.forEach(x => {
+    const labels = labelsOf(x);
+    x.args = x.args.map((a, i) => {
+      const c = S.asConnection(a, names);
+      if (!c || c.mod !== m.name) return a;
+      const k = kind(labels[i].type || outType(c.mod, c.port));
+      return k === "obj" ? hn + "-nullobj" : k === "ctl" ? "0" : hn + "-null";
+    });
+  });
+  doc.mods.splice(doc.mods.indexOf(m), 1);
+  selected = null;
+  changed();
+  status(`Module ${m.name} deleted; its connections were replaced with null/zero.`);
+}
+
+function changed() { render(); renderInspector(); $("txt").value = S.serialize(doc); record(); }
+
+// ---------------------------------------------------------------- ajout
+function defaultArgs(type) { return S.defaultArgs(DEFS[type], headName()); }
+
+function addModule() {
+  const type = $("addType").value;
+  let name = $("addName").value.trim().replace(/\s+/g, "_");
+  if (!name) { let k = 1; while (doc.mods.some(m => m.name === type.toLowerCase() + k)) k++; name = type.toLowerCase() + k; }
+  if (doc.mods.some(m => m.name === name)) return status("This name already exists.", true);
+  const m = { type, name, args: defaultArgs(type), comment: "" };
+  const ti = doc.mods.findIndex(x => x.type === "TAIL");
+  doc.mods.splice(ti < 0 ? doc.mods.length : ti, 0, m);
+  m.pos = { x: (-view.x + 300) / view.k, y: (-view.y + 120) / view.k };
+  if (!S.fieldLabels(DEFS[type], m.args)) status("Module added; check the number of parameters in the Text tab.", true);
+  else status(`Module ${type} ${name} added.`);
+  select(m); changed();
+}
+
+// ---------------------------------------------------------------- onglets / fichiers
+function showTab(t) {
+  ["Mod", "Text", "Add"].forEach(x => { $("p" + x).hidden = x !== t; $("t" + x).classList.toggle("on", x === t); });
+  if (t === "Text") $("txt").value = S.serialize(doc);
+}
+$("tMod").onclick = () => showTab("Mod");
+$("tText").onclick = () => showTab("Text");
+$("tAdd").onclick = () => showTab("Add");
+$("bApply").onclick = () => { loadText($("txt").value, fileName); };
+$("bAdd").onclick = addModule;
+function fillTypes() {
+  $("addType").length = 0;
+  Object.keys(DEFS).sort().forEach(k => $("addType").add(new Option(`${k}  (${DEFS[k].group || "?"})`, k)));
+}
+fillTypes();
+$("addType").onchange = () => {
+  const d = DEFS[$("addType").value];
+  if (!d) return;
+  const flat = items => items.map(f => f.repeat !== undefined ? "[" + flat(f.items) + "] × " + f.repeat.replace("@", "") : f.name).join(" ");
+  $("addHelp").textContent = "Fields: " + flat(d.fields);
+};
+["fAudio", "fCtl", "fMod", "fObj"].forEach(id => $(id).onchange = render);
+$("bLayout").onclick = () => { autoLayout(); render(); record(); };
+
+$("bNew").onclick = async () => {
+  if (doc.mods.length > 2 && !(await ask("Discard the current algorithm? (save it first if needed)"))) return;
+  const title = await ask("Name of the new preset (19 characters max):", "New");
+  if (title === null) return;
+  loadText(blankPatch(title), (title.trim() || "new").replace(/[^\w -]/g, "") + ".sig");
+  filePath = null;
+  markSaved();
+  status("New patch: the input is connected straight to the output. Add modules from the Add tab.");
+};
+
+$("bRandom").onclick = async ev => {
+  if (!Object.keys(DEFS).length) return status("Random needs the module database: connect the DSP and click \"Load module database\", or import a database file.", true);
+  let seed;
+  if (ev.shiftKey) {
+    const s = await ask("Seed (1-9999) of the patch to generate:", "");
+    if (s === null) return;
+    seed = parseInt(s, 10);
+    if (!(seed >= 1 && seed <= 9999)) return status("The seed must be a number from 1 to 9999.", true);
+  }
+  try {
+    const r = window.MsigRandom.generate(DEFS, seed);
+    loadText(r.text, r.title.replace(/\s+/g, "_") + ".sig");
+    filePath = null;
+    markSaved();
+    status(`${r.title}: ${r.chain}. ${MODKEY} Z returns to the previous patch; "Send to DSP" to hear it.`);
+  } catch (e) { status(e.message, true); }
+};
+
+function loadText(text, name) {
+  doc = S.parse(text);
+  fileName = name || fileName;
+  selected = null;
+  if (doc.mods.some(m => !m.pos)) autoLayout();
+  view.x = 40; view.y = 40; view.k = 0.85;
+  changed();
+  const undoc = Object.keys(DEFS).length ? [...new Set(doc.mods.filter(m => !DEFS[m.type]).map(m => m.type))] : [];
+  status(`${fileName} : ${doc.mods.length} modules.` + (undoc.length ? ` Not in the DSP database: ${undoc.join(", ")}.` : ""));
+}
+
+let filePath = null;  // chemin du fichier sur l'ordinateur (ouvert ou enregistre via la passerelle)
+const folderOf = p => (p ? p.replace(/\/[^/]*$/, "") : "");
+const gwDialogs = () => !!GW && GW.dialogs !== false;  // dialogues de fichiers du systeme (sinon ceux du navigateur)
+$("bOpen").onclick = async () => {
+  if (!gwDialogs()) return $("file").click();
+  try {
+    const r = await api("open", JSON.stringify({ dir: folderOf(filePath) }));
+    if (r.cancelled) return;
+    loadText(r.text, r.name);
+    filePath = r.path;
+    markSaved();
+  } catch (e) { status("Open failed: " + e.message, true); }
+};
+$("file").onchange = async () => { const f = $("file").files[0]; if (f) { loadText(await f.text(), f.name); filePath = null; } $("file").value = ""; };
+
+function stampPositions() {
+  doc.mods.forEach(m => {
+    if (!m.pos || m.type === "TAIL") return;
+    const rest = /;=\s*-?\d+\s*,\s*-?\d+(.*)$/.exec(m.comment || "");
+    m.comment = `;=${Math.round(m.pos.x)},${Math.round(m.pos.y)}${rest ? rest[1] : ",100,0"}`;
+  });
+}
+async function saveDoc(as) {
+  stampPositions();
+  const text = S.serialize(doc, "\r\n");
+  const name = fileName.replace(/\.\w+$/, "") + ".sig";
+  if (gwDialogs()) {
+    try {
+      const r = !as && filePath
+        ? await api("save", JSON.stringify({ path: filePath, text }))
+        : await api("save-as", JSON.stringify({ name, text, dir: folderOf(filePath) }));
+      if (r.cancelled) return status("Save cancelled.");
+      filePath = r.path; fileName = r.name;
+      markSaved();
+      status("Saved: " + r.path);
+    } catch (e) { status("Save failed: " + e.message, true); }
+    return;
+  }
+  // sans passerelle (fichier ouvert directement dans le navigateur) : telechargement
+  let fn = name;
+  if (as) {
+    const t = await ask("File name:", name);
+    if (t === null) return;
+    fn = (t.trim() || name).replace(/[\/:]/g, "_");
+    if (!/\.(sig|txt)$/i.test(fn)) fn += ".sig";
+    fileName = fn;
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  a.download = fn; a.click();
+  status("File saved: " + fn);
+}
+$("bSave").onclick = () => saveDoc(false);
+$("bSaveAs").onclick = () => saveDoc(true);
+
+// ---------------------------------------------------------------- nom du patch (texte de HEADM)
+function headIndex() {
+  const h = doc.mods.find(isHead);
+  if (!h) return null;
+  const i = 2 + (+h.args[1] || 0);  // HEADM nin nout out1..outN "nom" "tag" ...
+  return i < h.args.length ? { h, i } : null;
+}
+function patchName() { const p = headIndex(); return p ? p.h.args[p.i].replace(/^"|"$/g, "") : ""; }
+async function renamePatch() {
+  const p = headIndex();
+  if (!p) return status("This patch has no HEADM line to hold a name.", true);
+  const t = await ask("Patch name (19 characters max):", patchName());
+  if (t === null) return;
+  const name = t.replace(/"/g, "'").trim().slice(0, 19) || "untitled";
+  p.h.args[p.i] = `"${name}"`;
+  fileName = name.replace(/[^\w -]/g, "").trim().replace(/\s+/g, "_") + ".sig";
+  changed();
+  status(`Patch renamed "${name}".` + (filePath ? " Use Save as… to also give the file a new name." : ""));
+}
+$("pname").onclick = renamePatch;
+
+// ---------------------------------------------------------------- liaison serie (Web Serial)
+const DSP = {
+  port: null, reader: null, buf: [], inside: false, waiters: [], devId: 1, rx: 0, frames: 0,
+  frame(cmd, data) { return new Uint8Array([0xF0, 0x1C, 0x70, this.devId, cmd, ...(data || []), 0xF7]); },
+  async connect(baud) {
+    if (!("serial" in navigator)) throw new Error("Web Serial unavailable: use Chrome or Edge.");
+    this.port = await navigator.serial.requestPort();
+    await this.port.open({ baudRate: baud, dataBits: 8, stopBits: +$("stopbits").value, parity: "none", flowControl: "none", bufferSize: 65536 });
+    // pyserial active DTR et RTS a l'ouverture, Chrome non : sans eux le DSP ne renvoie rien
+    // (avec un cable droit, RTS du Mac arrive sur le CTS du DSP).
+    try { await this.port.setSignals({ dataTerminalReady: true, requestToSend: true }); } catch (e) { console.warn(e); }
+    this.loop();
+  },
+  async loop() {
+    while (this.port && this.port.readable) {
+      this.reader = this.port.readable.getReader();
+      try {
+        for (;;) { const { value, done } = await this.reader.read(); if (done) break; this.feed(value); }
+      } catch (e) { status("Serial read interrupted: " + e.message, true); }
+      finally { this.reader.releaseLock(); }
+    }
+  },
+  feed(bytes) {
+    this.rx += bytes.length;
+    for (const b of bytes) {
+      if (b === 0xF0) { this.buf = [b]; this.inside = true; }
+      else if (this.inside) {
+        if (b >= 0xF8) continue;
+        this.buf.push(b);
+        if (b === 0xF7) { this.inside = false; this.dispatch(this.buf); }
+      }
+    }
+  },
+  dispatch(f) {
+    this.frames++;
+    if (f[1] !== 0x1C || f[2] !== 0x70) return;
+    const cmd = f[4], payload = f.slice(5, -1);
+    if (cmd === 0x0D) status("DSP error: " + String.fromCharCode(...payload).trim(), true);
+    this.waiters = this.waiters.filter(w => { if (w.cmds.includes(cmd)) { w.res({ cmd, payload }); return false; } return true; });
+  },
+  wait(cmds, ms) {
+    return new Promise((res, rej) => {
+      const w = { cmds, res };
+      this.waiters.push(w);
+      setTimeout(() => { if (this.waiters.includes(w)) { this.waiters = this.waiters.filter(x => x !== w);
+        rej(new Error(`no response from the DSP (received in total: ${this.rx} bytes, ${this.frames} frames)`)); } }, ms);
+    });
+  },
+  async send(bytes) { const w = this.port.writable.getWriter(); await w.write(bytes); w.releaseLock(); },
+};
+
+$("bConnect").onclick = async () => {
+  try {
+    await DSP.connect(+$("baud").value);
+    ["bGet", "bSend", "bScreen"].forEach(id => $(id).disabled = false);
+    $("bConnect").disabled = true;
+    status("DSP connected (" + $("baud").value + " baud, 8N" + $("stopbits").value + ").");
+  } catch (e) { status(e.message, true); }
+};
+
+$("bGet").onclick = async () => {
+  try {
+    status("Reading the algorithm from the DSP… (a few seconds; up to a minute on units with a slow SysEx speed)");
+    let text;
+    if (GW) text = (await api("get-algo")).text;
+    else {
+      const p = DSP.wait([0x08, 0x0A], 20000);
+      await DSP.send(DSP.frame(0x0B));
+      const { payload } = await p;
+      text = String.fromCharCode(...payload);
+    }
+    text = text.trim().replace(/\r\n?/g, "\n");
+    const title = /"([^"]*)"/.exec(text);
+    loadText(text + "\n", (title ? title[1] : "algo").replace(/[^\w -]/g, "") + ".sig");
+  } catch (e) { status(e.message, true); }
+};
+
+$("bSend").onclick = async () => {
+  const text = S.serialize({ mods: doc.mods.map(m => ({ ...m, comment: "" })), extra: [] }, "\r\n").trim();
+  const bytes = [...text].map(c => c.charCodeAt(0)).filter(b => b < 0x80);
+  if (!(await ask("Replace the algorithm loaded in the DSP with this one?"))) return;
+  if (GW) {
+    try {
+      status("Sending…");
+      const r = await api("send-algo", text);
+      status(r.error ? "DSP error: " + r.error : `Algorithm sent (${r.sent} bytes), no error reported.`, !!r.error);
+    } catch (e) { status(e.message, true); }
+    return;
+  }
+  try {
+    let err = null;
+    const p = DSP.wait([0x0D], 4000).then(r => { err = String.fromCharCode(...r.payload).trim(); }).catch(() => {});
+    await DSP.send(DSP.frame(0x0A, bytes));
+    status(`Sent (${bytes.length} bytes). Waiting for a possible error…`);
+    await p;
+    status(err ? "DSP error: " + err : `Algorithm sent (${bytes.length} bytes), no error reported.`, !!err);
+  } catch (e) { status(e.message, true); }
+};
+
+async function grabScreen() {
+  let w, h, img;
+  if (GW) {
+    status("Reading the screen from the DSP…");
+    const r = await api("screen");
+    status("Screen received.");
+    w = r.w; h = r.h; img = [...atob(r.img)].map(c => c.charCodeAt(0));
+  } else {
+    const p = DSP.wait([0x17], 10000);
+    await DSP.send(DSP.frame(0x18));
+    const { payload } = await p;
+    const den = (a, n) => { const o = []; for (let i = 0; i < n; i++) o.push((a[2 * i] << 4) | a[2 * i + 1]); return o; };
+    const head = den(payload, 12);
+    const be = i => ((head[i] << 24) | (head[i + 1] << 16) | (head[i + 2] << 8) | head[i + 3]) >>> 0;
+    w = be(0); h = be(4);
+    img = den(payload.slice(24), be(8));
+  }
+  const c = $("screenCanvas"), z = 3, ctx = c.getContext("2d");
+  c.width = w * z; c.height = h * z;
+  ctx.fillStyle = "#cfd8c4"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = "#1d2a1d";
+  const row = Math.ceil(w / 8);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++)
+    if (img[y * row + (x >> 3)] & (0x80 >> (x & 7))) ctx.fillRect(x * z, y * z, z, z);
+}
+$("bScreen").onclick = async () => { try { await grabScreen(); $("dScreen").showModal(); } catch (e) { status(e.message, true); } };
+$("bScreenRefresh").onclick = () => grabScreen().catch(e => status(e.message, true));
+$("bScreenClose").onclick = () => $("dScreen").close();
+$("bScreenPng").onclick = () => { const a = document.createElement("a"); a.href = $("screenCanvas").toDataURL("image/png"); a.download = "dsp_screen.png"; a.click(); };
+
+// ---------------------------------------------------------------- passerelle msig_serveur.py
+let GW = null;
+async function api(path, body) {
+  const r = await fetch("/api/" + path, { method: "POST", body: body || "" });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || "gateway error");
+  return j;
+}
+async function gwStatus() { const r = await fetch("/api/status"); if (!r.ok) throw new Error("no gateway"); return r.json(); }
+function gwShow() {
+  const on = !!GW.port;
+  ["bGet", "bSend", "bScreen"].forEach(id => $(id).disabled = !on);
+  // reglages serie retenus par la passerelle (vitesse, bits de stop : comme sur l'appareil)
+  if (GW.baud && ![...$("baud").options].some(o => +o.value === GW.baud)) $("baud").add(new Option(String(GW.baud)));
+  if (GW.baud) $("baud").value = String(GW.baud);
+  if (GW.stopbits) $("stopbits").value = String(GW.stopbits);
+  $("baud").hidden = $("stopbits").hidden = false; $("bQuit").hidden = false;
+  const sel = $("gwPort");
+  sel.length = 0;
+  (GW.ports.includes(GW.port) || !GW.port ? GW.ports : [GW.port, ...GW.ports]).forEach(p => sel.add(new Option(p.replace("/dev/", ""), p)));
+  if (!sel.length) sel.add(new Option("no adapter detected", ""));
+  sel.value = GW.port || sel.options[0].value;
+  sel.hidden = false;
+  $("bConnect").textContent = on ? "Reconnect" : "Connect";
+  $("bConnect").classList.toggle("primary", !on);
+  $("bDbase").hidden = !on;
+  $("bDbase").classList.toggle("primary", on && !Object.keys(DEFS).length);
+  $("bDbaseFile").hidden = false;
+}
+async function gwModules() {
+  const r = await fetch("/api/modules");
+  if (!r.ok) return false;
+  DEFS = await r.json(); fillTypes(); changed();
+  return true;
+}
+async function gwConnect() {
+  const port = $("gwPort").value;
+  if (!port) {
+    GW = await gwStatus(); gwShow();
+    return status(GW.ports.length ? "Choose the port, then click Connect." : "No USB-serial adapter detected: plug it in, then click Connect.", true);
+  }
+  try {
+    GW = await (await fetch("/api/connect", { method: "POST", body: JSON.stringify({ port, baud: +$("baud").value, stopbits: +$("stopbits").value }) })).json();
+    if (GW.error) throw new Error(GW.error);
+  } catch (e) { GW = await gwStatus(); gwShow(); return status(e.message.startsWith(port) ? e.message : "Port " + port + ": " + e.message, true); }
+  gwShow();
+  status("Connected to the DSP (" + GW.port + ", " + GW.baud + " baud, " + GW.stopbits + " stop bit" + (GW.stopbits > 1 ? "s" : "") + ")." + (Object.keys(DEFS).length ? "" : " Click \"Load module database\" (or \"Import database…\") to enable the module editor."));
+}
+// Lecture de la base sur le DSP : la passerelle lit en tache de fond (de 25 s a plusieurs
+// minutes selon l'appareil) ; on suit l'avancement sans limite de duree cote page.
+const mmss = t => Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0");
+async function dbaseFollow() {
+  $("bDbase").disabled = $("bDbaseFile").disabled = true;
+  try {
+    for (;;) {
+      const j = await (await fetch("/api/dbase-progress")).json();
+      if (j.running) {
+        status(j.bytes ? `Reading the module database from the DSP: ${(j.bytes / 1024).toFixed(0)} KB received (${mmss(j.seconds)}). Larger units can take several minutes.`
+                       : `Reading the module database: waiting for the DSP (${mmss(j.seconds)})…`);
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+      if (j.error) throw new Error(j.error);
+      await gwModules();
+      status(`Module database loaded: ${j.count} modules. It is kept for future sessions.`);
+      break;
+    }
+  } catch (e) { status("Module database: " + e.message, true); }
+  $("bDbase").disabled = $("bDbaseFile").disabled = false;
+  gwShow();
+}
+$("bDbase").onclick = async () => {
+  try { await api("load-dbase"); } catch (e) { return status("Module database: " + e.message, true); }
+  dbaseFollow();
+};
+async function dbaseImported(r) {
+  if (r.cancelled) return;
+  await gwModules();
+  status(`Module database imported from ${r.name}: ${r.count} modules. It is kept for future sessions.`);
+  gwShow();
+}
+$("bDbaseFile").onclick = async () => {
+  if (!gwDialogs()) return $("dbFile").click();
+  try { await dbaseImported(await api("import-dbase")); } catch (e) { status("Module database: " + e.message, true); }
+};
+$("dbFile").onchange = async () => {
+  const f = $("dbFile").files[0];
+  $("dbFile").value = "";
+  if (!f) return;
+  try {
+    const r = await fetch("/api/import-dbase", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: await f.arrayBuffer() });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "gateway error");
+    await dbaseImported({ ...j, name: f.name });
+  } catch (e) { status("Module database: " + e.message, true); }
+};
+$("bQuit").onclick = async () => {
+  const unsaved = hist.i !== hist.saved ? " The patch has unsaved changes." : "";
+  if (!(await ask("Quit MSIG? The serial port will be released and this page will stop responding." + unsaved))) return;
+  try { await api("quit"); } catch (e) { /* le serveur s'arrete */ }
+  document.body.dataset.stopped = "1";
+  document.body.innerHTML = "<p style='padding:2em'>MSIG has stopped. You can close this tab.</p>";
+};
+(async () => {
+  if (!/^https?:$/.test(location.protocol)) return;
+  try { GW = await gwStatus(); } catch (e) { return; /* pas de passerelle : mode Web Serial */ }
+  $("bConnect").onclick = gwConnect;
+  gwShow();
+  setInterval(() => fetch("/api/ping", { method: "POST" }).catch(() => {}), 20000);
+  const have = Object.keys(DEFS).length || await gwModules();
+  if (GW.dbase && GW.dbase.running) dbaseFollow();
+  else if (have && GW.dbase && GW.dbase.file) status(`Module database found in the MSIG folder (${GW.dbase.file}): ${GW.dbase.count} modules.`);
+  else if (!GW.port) status(GW.ports.length ? "Choose the serial port, then click Connect." : "No USB-serial adapter detected: plug it in, then click Connect.", true);
+  else if (!have) status("Connected (" + GW.port + "). First use: click \"Load module database\" (or \"Import database…\") to enable the module editor.");
+  else status("Connected to the DSP via the gateway (" + GW.port + ").");
+})();
+
+// ---------------------------------------------------------------- annuler / retablir, presse-papiers
+// Chaque etat du patch (modules, valeurs, positions) est conserve sous forme de texte JSON.
+const hist = { stack: [], i: -1, max: 200, saved: 0 };  // saved : etape enregistree (pas de modification en cours)
+function record() {
+  const s = JSON.stringify({ mods: doc.mods, extra: doc.extra });
+  if (hist.stack[hist.i] === s) return;
+  hist.stack.splice(hist.i + 1);
+  hist.stack.push(s);
+  if (hist.stack.length > hist.max) { hist.stack.shift(); hist.saved--; }
+  hist.i = hist.stack.length - 1;
+}
+function markSaved() { hist.saved = hist.i; render(); }
+function restore(k) {
+  hist.i = k;
+  const selName = selected && selected.name;
+  doc = JSON.parse(hist.stack[k]);
+  selected = doc.mods.find(m => m.name === selName) || null;
+  render(); renderInspector(); $("txt").value = S.serialize(doc);
+}
+function undo() { if (hist.i > 0) { restore(hist.i - 1); status("Undo."); } else status("Nothing to undo."); }
+function redo() { if (hist.i < hist.stack.length - 1) { restore(hist.i + 1); status("Redo."); } else status("Nothing to redo."); }
+
+let clip = null;
+const editable = m => !!m && !isHead(m) && m.type !== "TAIL";
+function copySel(quiet) {
+  if (!editable(selected)) { if (!quiet) status("Select a module first.", true); return false; }
+  const m = selected;
+  clip = { type: m.type, name: m.name, args: [...m.args], pos: m.pos ? { ...m.pos } : null };
+  if (!quiet) {
+    try { navigator.clipboard.writeText([m.type, m.name].concat(m.args).join(" ")).catch(() => {}); } catch (e) { /* facultatif */ }
+    status(`Module ${m.name} copied.`);
+  }
+  return true;
+}
+function uniqueName(name) {
+  const base = name.replace(/\d+$/, "") || "mod";
+  let k = 1;
+  while (doc.mods.some(m => m.name === base + k)) k++;
+  return base + k;
+}
+function pasteClip() {
+  if (!clip) return status("Nothing to paste.", true);
+  const m = { type: clip.type, name: uniqueName(clip.name), args: [...clip.args], comment: "" };
+  const ti = doc.mods.findIndex(x => x.type === "TAIL");
+  doc.mods.splice(ti < 0 ? doc.mods.length : ti, 0, m);
+  const p = clip.pos || { x: (-view.x + 300) / view.k, y: (-view.y + 120) / view.k };
+  m.pos = { x: p.x + 30, y: p.y + 30 };
+  clip.pos = { ...m.pos };  // collages successifs en cascade
+  select(m); changed();
+  status(`Module ${m.type} ${m.name} pasted.`);
+}
+function cutSel() { if (copySel()) { const m = selected; deleteModule(m); status(`Module ${m.name} cut.`); } }
+function duplicateSel() {
+  const saved = clip;
+  if (copySel(true)) pasteClip();
+  clip = saved;
+}
+function deleteSel() { if (editable(selected)) deleteModule(selected); else status("Select a module first.", true); }
+
+const ACTIONS = { undo, redo, cut: cutSel, copy: () => copySel(), paste: pasteClip, duplicate: duplicateSel, delete: deleteSel, rename: renamePatch };
+function updateMenu() {
+  const can = { undo: hist.i > 0, redo: hist.i < hist.stack.length - 1, paste: !!clip, rename: !!headIndex() };
+  ["cut", "copy", "duplicate", "delete"].forEach(a => can[a] = editable(selected));
+  $("mEdit").querySelectorAll("button").forEach(b => b.disabled = !can[b.dataset.act]);
+}
+$("bEdit").onclick = ev => { ev.stopPropagation(); updateMenu(); $("mEdit").hidden = !$("mEdit").hidden; };
+$("mEdit").addEventListener("click", ev => {
+  const b = ev.target.closest("button");
+  if (!b || b.disabled) return;
+  $("mEdit").hidden = true;
+  ACTIONS[b.dataset.act]();
+});
+document.addEventListener("pointerdown", ev => { if (!ev.target.closest(".menu")) $("mEdit").hidden = true; });
+
+document.addEventListener("keydown", ev => {
+  const t = ev.target;
+  // dans un champ de saisie, les raccourcis gardent leur role habituel (annuler la frappe, copier le texte...)
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+  if ($("dScreen").open || asking()) return;
+  const mod = ev.metaKey || ev.ctrlKey, k = ev.key.toLowerCase();
+  const run = (fn) => { ev.preventDefault(); lastShortcut = Date.now(); $("mEdit").hidden = true; fn(); };
+  if (mod && k === "z") run(ev.shiftKey ? redo : undo);
+  else if (mod && k === "y") run(redo);
+  else if (mod && k === "x") run(cutSel);
+  else if (mod && k === "c") { if (editable(selected)) run(() => copySel()); }
+  else if (mod && k === "v") { if (clip) run(pasteClip); }
+  else if (mod && k === "d") run(duplicateSel);
+  else if (mod && k === "s") run(() => saveDoc(ev.shiftKey));
+  else if (mod && k === "o") run(() => $("bOpen").click());
+  else if (!mod && (k === "backspace" || k === "delete") && editable(selected)) run(deleteSel);
+  else if (k === "escape") { $("mEdit").hidden = true; if (selected) { selected = null; renderInspector(); render(); } }
+});
+
+// ---------------------------------------------------------------- cables a la souris
+// Tirer d'une pastille a une autre cree la connexion (types compatibles uniquement) ;
+// double-clic : entree -> valeur par defaut ; sortie -> retire tous ses cables.
+let revealCtl = false;
+function inType(m, i) {
+  const l = labelsOf(m)[i];
+  if (l && l.type) return l.type;
+  const c = S.asConnection(m.args[i], new Set(doc.mods.map(x => x.name)));
+  return c ? outType(c.mod, c.port).replace(/_out$/, "_in") : null;
+}
+function compatible(outT, inT) {
+  if (!inT) return true;
+  if (inT === "audio_in" || inT === "mod_in") return /^(audio|mod)_out$/.test(outT);
+  if (inT === "ctl_in") return outT === "ctl_out";
+  if (inT === "obj_in") return outT === "obj_out";
+  return false;
+}
+function pinInfo(el) {
+  const m = doc.mods.find(x => x.name === el.dataset.mod);
+  if (!m) return null;
+  if (el.dataset.out !== undefined) return { m, out: el.dataset.out, type: outType(m.name, el.dataset.out) };
+  const i = +el.dataset.in;
+  return { m, i, type: inType(m, i) };
+}
+function canLink(a, b) {
+  const o = a.out !== undefined ? a : b, n = a.out !== undefined ? b : a;
+  return o.out !== undefined && n.i !== undefined && o.m.name !== n.m.name && compatible(o.type, n.type);
+}
+function svgPoint(ev) {
+  const r = $("svg").getBoundingClientRect();
+  return { x: (ev.clientX - r.left - view.x) / view.k, y: (ev.clientY - r.top - view.y) / view.k };
+}
+function startCable(ev, el) {
+  const from = pinInfo(el);
+  if (!from) return;
+  const key = from.out !== undefined ? from.m.name + "." + from.out : from.m.name + "#" + from.i;
+  const sx = ev.clientX, sy = ev.clientY;
+  let started = false, path = null, p0 = null;
+  const mark = () => document.querySelectorAll("#nodes circle.pin").forEach(c => {
+    const t = pinInfo(c);
+    c.classList.add(t && canLink(from, t) ? "ok" : "dim");
+  });
+  const begin = () => {
+    started = true;
+    // les entrees de controle ne sont affichees que pendant un glisser depuis une sortie de controle
+    if (from.type === "ctl_out") { revealCtl = true; render(); }
+    p0 = portPos[key];
+    mark();
+    path = svgEl("path", { class: "cable" }, $("drag"));
+  };
+  const move = e2 => {
+    if (!started) { if (Math.hypot(e2.clientX - sx, e2.clientY - sy) < 4) return; begin(); }
+    if (!p0) return;
+    const q = svgPoint(e2);
+    const dx = Math.max(30, Math.abs(q.x - p0.x) / 2) * (from.out !== undefined ? 1 : -1);
+    path.setAttribute("d", `M${p0.x},${p0.y} C${p0.x + dx},${p0.y} ${q.x - dx},${q.y} ${q.x},${q.y}`);
+  };
+  const up = e2 => {
+    window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+    if (!started) return;  // simple clic (ou premier clic d'un double-clic) : rien a faire
+    $("drag").innerHTML = "";
+    const target = document.elementFromPoint(e2.clientX, e2.clientY);
+    const to = target && target.classList && target.classList.contains("pin") ? pinInfo(target) : null;
+    revealCtl = false;
+    if (to && canLink(from, to)) {
+      const o = from.out !== undefined ? from : to, n = from.out !== undefined ? to : from;
+      const src = o.m.name + "-" + o.out;
+      if (n.m.args[n.i] !== src) {
+        n.m.args[n.i] = src;
+        changed();
+        return status(`Connected ${src} → ${n.m.name} ${labelsOf(n.m)[n.i].label}.`);
+      }
+    }
+    render();
+  };
+  window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+}
+function defaultFor(m, i) {
+  const l = labelsOf(m)[i] || {};
+  const t = inType(m, i);
+  const plainv = v => String(v == null ? "" : v).replace(/^=/, "");
+  if (t === "obj_in") return headName() + "-nullobj";
+  if (t === "ctl_in") {
+    const d = plainv(l.def), lo = plainv(l.min);
+    return /^-?[\d.]+$/.test(d) ? d : /^-?[\d.]+$/.test(lo) ? lo : "0";
+  }
+  return headName() + "-null";
+}
+$("svg").addEventListener("dblclick", async ev => {
+  const el = ev.target;
+  if (!el.classList || !el.classList.contains("pin")) return;
+  ev.stopPropagation();
+  const p = pinInfo(el);
+  if (!p) return;
+  if (p.i !== undefined) {
+    const before = p.m.args[p.i], def = defaultFor(p.m, p.i);
+    if (before === def) return;
+    p.m.args[p.i] = def;
+    changed();
+    return status(`${p.m.name} ${labelsOf(p.m)[p.i].label}: cable removed (now ${def}).`);
+  }
+  const src = p.m.name + "-" + p.out;
+  const uses = [];
+  doc.mods.forEach(m => m.args.forEach((a, i) => { if (a === src) uses.push({ m, i }); }));
+  if (!uses.length) return;
+  if (uses.length > 1 && !(await ask(`Remove the ${uses.length} cables leaving ${src}?`))) return;
+  uses.forEach(u => { u.m.args[u.i] = defaultFor(u.m, u.i); });
+  changed();
+  status(`${uses.length} cable${uses.length > 1 ? "s" : ""} removed from ${src}.`);
+});
+
+// ---------------------------------------------------------------- menus de la fenetre native
+let lastShortcut = 0;
+window.msigMenu = act => {
+  if (Date.now() - lastShortcut < 300 || asking()) return;  // deja traite par le raccourci clavier, ou question ouverte
+  const click = id => { const b = $(id); if (b && !b.disabled) b.click(); else status("Not available now.", true); };
+  const map = {
+    new: () => click("bNew"), random: () => $("bRandom").onclick({}), randomSeed: () => $("bRandom").onclick({ shiftKey: true }),
+    open: () => $("bOpen").onclick(), save: () => saveDoc(false), saveAs: () => saveDoc(true), rename: renamePatch,
+    connect: () => click("bConnect"), get: () => click("bGet"), send: () => click("bSend"), screen: () => click("bScreen"),
+    dbase: () => (GW && GW.port ? $("bDbase").click() : status("Connect the DSP first.", true)),
+    dbaseFile: () => (GW ? $("bDbaseFile").click() : status("Not available now.", true)), layout: () => click("bLayout"),
+  };
+  const fn = map[act] || ACTIONS[act];
+  if (fn) fn();
+};
+if (NATIVE) {
+  // la barre de menus remplace le menu Edit de la page ; fermer la fenetre quitte MSIG
+  document.body.classList.add("native");
+} else {
+  // navigateur : prevenir avant de fermer l'onglet si le patch n'est pas enregistre
+  window.addEventListener("beforeunload", ev => {
+    if (document.body.dataset.stopped || hist.i === hist.saved) return;
+    ev.preventDefault(); ev.returnValue = "";
+  });
+}
+if (!IS_MAC) {
+  // Linux, Windows : raccourcis avec Ctrl
+  document.querySelectorAll("kbd").forEach(k => { k.textContent = k.textContent.replace("⇧⌘", "Ctrl+Shift+").replace("⌘", "Ctrl+"); });
+  document.querySelectorAll("[title]").forEach(e => { e.title = e.title.replace("⇧⌘", "Ctrl+Shift+").replace("⌘", "Ctrl+"); });
+}
+
+// demarrage
+autoLayout(); changed(); hist.saved = hist.i;
+</script>
+</body>
+</html>

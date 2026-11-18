@@ -1,0 +1,24 @@
+# build output
+dist/
+build/
+venv/
+.venv/
+__pycache__/
+.pytest_cache/
+*.dmg
+*.tar.gz
+
+# generated editor (rebuilt by editeur/build.py)
+editeur/msig_editeur_public.html
+editeur/msig_editeur.html
+
+# captures and logs
+*.bin
+*.log
+
+# module databases: they belong to the hardware manufacturer and are read from your own unit
+modules_dsp.*
+*.syx
+*.sbf
+
+.DS_Store

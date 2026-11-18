@@ -112,7 +112,7 @@ outputs, inputs, sections), which the editor expands.
   one HTML file by `editeur/build.py`.
 - `app/`: build scripts, icon, end-user READMEs.
 
-Code comments are in French.
+Code comments are in English.
 
 ## License
 

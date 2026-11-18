@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-msig_app.py - MSIG dans sa propre fenetre macOS.
+msig_app.py - MSIG in its own macOS window.
 
-L'editeur (le meme fichier HTML que la version navigateur) est affiche dans une fenetre
-WKWebView, avec une vraie barre de menus (File, Edit, DSP, Window) et les dialogues natifs.
-La passerelle msig_serveur.py tourne dans le meme processus, sur un port local choisi au
-hasard et protege par le controle d'origine ; fermer la fenetre quitte l'application et
-libere le port serie.
+The editor (the same HTML file as the browser version) is shown in a WKWebView window,
+with a real menu bar (File, Edit, DSP, Window) and the native dialogs.
+The msig_serveur.py gateway runs in the same process, on a randomly chosen local port
+protected by the origin check; closing the window quits the application and releases
+the serial port.
 
-    python3 msig_app.py                       # fenetre native
-    python3 msig_app.py --port /dev/cu.xxx    # port serie impose
-    python3 msig_app.py --browser [options]   # ancienne version : editeur dans le navigateur
+    python3 msig_app.py                       # native window
+    python3 msig_app.py --port /dev/cu.xxx    # forced serial port
+    python3 msig_app.py --browser [options]   # old version: editor in the browser
 
-MSIG_SELFTEST=/chemin/resultat.json : test automatique (voir selftest()), puis fermeture.
+MSIG_SELFTEST=/path/result.json: automatic test (see selftest()), then quit.
 """
 import json
 import os
@@ -59,8 +59,8 @@ def _protocols(*names):
     return out
 CMD, SHIFT, OPT = NSEventModifierFlagCommand, NSEventModifierFlagShift, NSEventModifierFlagOption
 
-# Signale a l'application si un champ de saisie a le focus (les commandes Edit agissent alors
-# sur le texte, comme dans toute application Mac) ; injecte avant le chargement de la page.
+# Tells the application whether a text field has focus (Edit commands then act on the
+# text, as in any Mac application); injected before the page loads.
 FOCUS_JS = """
 (function () {
   const post = m => window.webkit.messageHandlers.msig.postMessage(m);
@@ -74,7 +74,7 @@ NATIVE_EDIT = {"undo": "undo:", "redo": "redo:", "cut": "cut:", "copy": "copy:",
 
 
 def setup_log():
-    if gw.BUNDLE:  # application sans terminal : messages dans ~/Library/Logs/MSIG.log
+    if gw.BUNDLE:  # application without a terminal: messages go to ~/Library/Logs/MSIG.log
         gw.open_log("(window)")
     else:
         print(time.strftime("--- %Y-%m-%d %H:%M:%S"), "MSIG", gw.VERSION, "(window)")
@@ -98,7 +98,7 @@ def start_gateway(serial_port):
 
 
 def on_main_and_wait(start):
-    """Execute start(done) sur le fil principal ; done(valeur) debloque l'appelant."""
+    """Run start(done) on the main thread; done(value) unblocks the caller."""
     ev, box = threading.Event(), {}
 
     def done(v):
@@ -108,7 +108,7 @@ def on_main_and_wait(start):
     def run():
         try:
             start(done)
-        except Exception as e:  # le dialogue n'a pas pu s'ouvrir
+        except Exception as e:  # the dialog could not be opened
             print("dialog error:", e)
             done(None)
     AppHelper.callAfter(run)
@@ -116,8 +116,8 @@ def on_main_and_wait(start):
     return box.get("v")
 
 
-# Les questions de la page (confirm, prompt) sont des dialogues HTML internes : la fenetre
-# n'a pas besoin des delegues JavaScript de WebKit.
+# The page's questions (confirm, prompt) are in-page HTML dialogs: the window does not
+# need WebKit's JavaScript delegates.
 class Controller(NSObject, protocols=_protocols("WKUIDelegate", "WKNavigationDelegate", "WKScriptMessageHandler")):
     def init(self):
         self = objc.super(Controller, self).init()
@@ -130,7 +130,7 @@ class Controller(NSObject, protocols=_protocols("WKUIDelegate", "WKNavigationDel
         self.selftest_log = []
         return self
 
-    # ---------------------------------------------------------------- fenetre
+    # ---------------------------------------------------------------- window
     @objc.python_method
     def build(self, url):
         cfg = WKWebViewConfiguration.alloc().init()
@@ -151,7 +151,7 @@ class Controller(NSObject, protocols=_protocols("WKUIDelegate", "WKNavigationDel
         self.web = WKWebView.alloc().initWithFrame_configuration_(self.window.contentView().bounds(), cfg)
         self.web.setUIDelegate_(self)
         self.web.setNavigationDelegate_(self)
-        self.web.setAutoresizingMask_(18)  # largeur et hauteur suivent la fenetre
+        self.web.setAutoresizingMask_(18)  # width and height follow the window
         self.window.contentView().addSubview_(self.web)
         self.web.loadRequest_(NSURLRequest.requestWithURL_(NSURL.URLWithString_(url)))
         self.window.makeKeyAndOrderFront_(None)
@@ -182,7 +182,7 @@ class Controller(NSObject, protocols=_protocols("WKUIDelegate", "WKNavigationDel
                 label, act = it[0], it[1]
                 key = it[2] if len(it) > 2 else ""
                 mods = it[3] if len(it) > 3 else CMD
-                if act.endswith(":"):  # action standard de Cocoa
+                if act.endswith(":"):  # standard Cocoa action
                     mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(label, act, key)
                 else:
                     mi = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(label, "menuAction:", key)
@@ -213,7 +213,7 @@ class Controller(NSObject, protocols=_protocols("WKUIDelegate", "WKNavigationDel
         APP().setMainMenu_(main)
         APP().setWindowsMenu_(win)
 
-    # ---------------------------------------------------------------- messages de la page
+    # ---------------------------------------------------------------- page messages
     def userContentController_didReceiveScriptMessage_(self, ucc, msg):
         m = msg.body()
         t = m.get("type") if hasattr(m, "get") else None
@@ -225,7 +225,7 @@ class Controller(NSObject, protocols=_protocols("WKUIDelegate", "WKNavigationDel
             self.window.setTitle_(f"{name} — MSIG")
             self.window.setDocumentEdited_(self.dirty)
 
-    # ---------------------------------------------------------------- alerte native (fermeture)
+    # ---------------------------------------------------------------- native alert (closing)
     @objc.python_method
     def _alert(self, text, buttons, field=None):
         a = NSAlert.alloc().init()
@@ -237,7 +237,7 @@ class Controller(NSObject, protocols=_protocols("WKUIDelegate", "WKNavigationDel
             a.window().setInitialFirstResponder_(field)
         return a.runModal() == NSAlertFirstButtonReturn
 
-    # ---------------------------------------------------------------- Ouvrir / Enregistrer (feuilles de la fenetre)
+    # ---------------------------------------------------------------- Open / Save (window sheets)
     @objc.python_method
     def ask_save(self, name, folder):
         def start(done):
@@ -277,7 +277,7 @@ class Controller(NSObject, protocols=_protocols("WKUIDelegate", "WKNavigationDel
         f = os.path.expanduser(folder or "")
         return f if os.path.isdir(f) else os.path.expanduser("~/Documents")
 
-    # ---------------------------------------------------------------- fermeture
+    # ---------------------------------------------------------------- closing
     @objc.python_method
     def _confirm_discard(self):
         if not self.dirty or SELFTEST:
@@ -312,7 +312,7 @@ class Controller(NSObject, protocols=_protocols("WKUIDelegate", "WKNavigationDel
             self.window.makeKeyAndOrderFront_(None)
         return True
 
-    # ---------------------------------------------------------------- test automatique
+    # ---------------------------------------------------------------- automatic test
     def webView_didFinishNavigation_(self, wv, nav):
         if SELFTEST:
             AppHelper.callLater(2.0, self.selftest)
@@ -339,7 +339,7 @@ class Controller(NSObject, protocols=_protocols("WKUIDelegate", "WKNavigationDel
           mods: doc.mods.length, name: patchName(), hist: hist.i, quitHidden: getComputedStyle($('bQuit')).display === 'none',
           editMenuHidden: getComputedStyle(document.querySelector('.menu')).display === 'none', dirty: hist.i !== hist.saved, status: $('status').textContent })"""
 
-        class Item:  # simule un clic de menu
+        class Item:  # simulates a menu click
             def __init__(self, act):
                 self.act = act
 

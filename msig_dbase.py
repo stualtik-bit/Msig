@@ -1,7 +1,7 @@
-"""Conversion de la base de modules du DSP (reponse SysEx 0x0C a Get Dbase, texte entre
-accolades) en dictionnaire pour l'editeur :
+"""Converts the DSP module database (SysEx reply 0x0C to Get Dbase, text in curly
+braces) into a dictionary for the editor:
     {TYPE: {"group": ..., "fields": [...], "outputs": [...]}}
-Utilise par msig_serveur.py (lecture directe sur le DSP) et editeur/dbase2json.py."""
+Used by msig_serveur.py (read directly from the DSP) and editeur/dbase2json.py."""
 import re
 
 ED = {"ED_SIGNAL", "ED_CONTROL", "ED_USEROBJ", "ED_STRING", "ED_INTEGER", "ED_REAL"}
@@ -19,7 +19,7 @@ def _records(block):
 
 
 def _clean(lst):
-    """Supprime les groupes de repetition vides."""
+    """Removes empty repeat groups."""
     out = []
     for x in lst:
         if "repeat" in x:
@@ -32,10 +32,10 @@ def _clean(lst):
 
 
 def extract_text(raw):
-    """Texte de la base a partir d'un fichier ou d'une reponse :
-    - une ou plusieurs trames SysEx (fichier .syx), dont on concatene les donnees ;
-    - le texte seul (reponse deja decodee, fichier texte .sbf enregistre par l'ancien
-      logiciel Windows, .txt)."""
+    """Database text from a file or a reply:
+    - one or more SysEx frames (.syx file), whose data is concatenated;
+    - the text alone (already decoded reply, .sbf text file saved by the old
+      Windows software, .txt)."""
     raw = bytes(raw)
     if b"\xF0" in raw[:16]:
         parts, i = [], raw.find(b"\xF0")
@@ -50,11 +50,11 @@ def extract_text(raw):
 
 
 def convert(raw):
-    """raw : trame(s) SysEx (F0 ... F7) ou texte seul (bytes)."""
+    """raw: SysEx frame(s) (F0 ... F7) or text alone (bytes)."""
     text = extract_text(raw).decode("latin1").replace("\r", "")
     mods = {}
     for block in re.findall(r"TYPE:OPERATOR\n.*?TYPE:OPERATOREND", text, re.S):
-        # le bloc commence au milieu d'un enregistrement : on le reconstruit
+        # the block starts in the middle of a record: rebuild it
         recs = list(_records("{" + block + "}"))
         head = recs[0] if recs else {}
         if "OPERATOR_NAME" not in head:

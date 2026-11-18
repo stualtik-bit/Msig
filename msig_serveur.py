@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-msig_serveur.py - passerelle locale entre l'editeur web et le DSP7000.
+msig_serveur.py - local gateway between the web editor and the DSP7000.
 
-L'editeur (msig_editeur.html) est servi sur http://127.0.0.1:8000 et dialogue avec le
-DSP via ce serveur, qui utilise pyserial (la liaison validee avec msig_mac.py).
-C'est aussi le programme de la version Linux (editeur dans le navigateur) ; sur Mac,
-msig_app.py l'utilise dans une fenetre native.
+The editor (msig_editeur.html) is served on http://127.0.0.1:8000 and talks to the
+DSP through this server, which uses pyserial (the link validated with msig_mac.py).
+It is also the program of the Linux version (editor in the browser); on Mac,
+msig_app.py runs it inside a native window.
 
-    python3 msig_serveur.py                        # port detecte automatiquement
+    python3 msig_serveur.py                        # port detected automatically
     python3 msig_serveur.py --port /dev/cu.usbserial-XXXX
 
-La base des modules (203 modules sur le DSP7000) n'est pas distribuee : elle est lue
-sur le DSP au premier usage (bouton de l'editeur) puis conservee dans
-~/Library/Application Support/MSIG/modules_dsp.json (Mac) ou ~/.local/share/msig (Linux).
-Elle peut aussi venir d'un fichier (.sbf texte de l'ancien logiciel Windows, .syx) : bouton
-"Import database file", ou fichier .sbf depose dans ce dossier (detecte au demarrage).
+The module database (203 modules on the DSP7000) is not distributed: it is read from
+the DSP on first use (editor button), then kept in
+~/Library/Application Support/MSIG/modules_dsp.json (Mac) or ~/.local/share/msig (Linux).
+It can also come from a file (text .sbf from the old Windows software, .syx): the
+"Import database file" button, or a .sbf file dropped into that folder (detected at startup).
 """
 import argparse
 import base64
@@ -37,7 +37,7 @@ import msig_mac as v  # noqa: E402
 from msig_dbase import convert, extract_text  # noqa: E402
 
 VERSION = "1.0.9"
-BUNDLE = getattr(sys, "_MEIPASS", None)  # dossier des ressources dans MSIG.app (PyInstaller)
+BUNDLE = getattr(sys, "_MEIPASS", None)  # resources folder inside MSIG.app (PyInstaller)
 
 
 MAC = sys.platform == "darwin"
@@ -54,7 +54,7 @@ def data_dir():
 
 
 def log_path():
-    """Journal de l'application empaquetee (pas de terminal pour afficher les messages)."""
+    """Log of the packaged application (no terminal to show the messages)."""
     if MAC:
         return os.path.expanduser("~/Library/Logs/MSIG.log")
     base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
@@ -79,11 +79,11 @@ def find_editor():
     sys.exit("msig_editeur.html not found: place it next to msig_serveur.py")
 
 
-# Ports serie. Les adaptateurs USB-serie (FTDI, Prolific, CH340, CP210x) passent en tete et
-# sont les seuls choisis automatiquement. Les ports "usbmodem" (Mac) et "ttyACM" (Linux) sont
-# ceux des appareils USB-MIDI et des cartes son : on les liste pour un choix manuel, sans
-# jamais s'y connecter seul (1.0.3 prenait le premier par ordre alphabetique et pouvait
-# envoyer des commandes a une autre machine).
+# Serial ports. USB-serial adapters (FTDI, Prolific, CH340, CP210x) come first and are the
+# only ones picked automatically. "usbmodem" (Mac) and "ttyACM" (Linux) ports belong to
+# USB-MIDI devices and sound cards: they are listed for manual selection, but never
+# connected to on their own (1.0.3 took the first one in alphabetical order and could
+# send commands to another machine).
 SERIAL_PATTERNS = ("/dev/cu.usbserial*", "/dev/cu.PL2303*", "/dev/cu.SLAB_USBtoUART*",
                    "/dev/cu.wchusbserial*", "/dev/ttyUSB*")
 OTHER_PATTERNS = ("/dev/cu.usbmodem*", "/dev/ttyACM*")
@@ -97,7 +97,7 @@ def _glob(patterns):
 
 
 def _linux_native_ports():
-    """Ports serie integres a la carte mere (ttyS*) reellement presents, via pyserial."""
+    """Motherboard serial ports (ttyS*) that are actually present, via pyserial."""
     if MAC:
         return []
     try:
@@ -108,18 +108,18 @@ def _linux_native_ports():
 
 
 def list_ports():
-    """Ports proposes dans l'editeur : adaptateurs serie d'abord, puis les autres."""
+    """Ports offered in the editor: serial adapters first, then the others."""
     first = _glob(SERIAL_PATTERNS)
     return first + [p for p in _linux_native_ports() + _glob(OTHER_PATTERNS) if p not in first]
 
 
 def auto_port():
-    """Port choisi au demarrage : un adaptateur USB-serie seulement, sinon aucun."""
+    """Port chosen at startup: a USB-serial adapter only, otherwise none."""
     return next(iter(_glob(SERIAL_PATTERNS)), None)
 
 
 def explain_serial_error(port, e):
-    """Message clair pour les erreurs d'ouverture les plus courantes."""
+    """Clear message for the most common open errors."""
     no = getattr(e, "errno", None)
     text = str(e)
     if no == errno.EACCES or "Permission denied" in text:
@@ -144,17 +144,17 @@ class Bridge:
         self.modules_path = os.path.join(data_dir(), "modules_dsp.json")
         self.settings_path = os.path.join(data_dir(), "settings.json")
         self.stopbits = 2
-        try:   # derniers reglages choisis dans l'editeur
+        try:   # last settings chosen in the editor
             with open(self.settings_path) as f:
                 saved = json.load(f)
             self.baud = int(saved.get("baud") or self.baud)
             self.stopbits = 1 if int(saved.get("stopbits") or 2) == 1 else 2
         except (OSError, ValueError, TypeError, AttributeError):
             pass
-        self.job = {"running": False}   # lecture de la base en cours (fil separe)
-        self.tried = {}                 # fichiers .sbf deja essayes (chemin -> date)
+        self.job = {"running": False}   # database read in progress (separate thread)
+        self.tried = {}                 # .sbf files already tried (path -> mtime)
 
-    # ---- liaison
+    # ---- link
     def connect(self, port, baud=None, stopbits=None):
         self._idle()
         with self.lock:
@@ -196,14 +196,14 @@ class Bridge:
                 "dbase": dict(self.job), "data_dir": data_dir(),
                 "dialogs": DIALOGS["save"] is not None, "platform": sys.platform}
 
-    # ---- commandes DSP
+    # ---- DSP commands
     def get_algo(self):
         self._idle()
         with self.lock:
             self._need()
             self.dev.send(v.CMD["GET_SIGFILE"])
-            # pas de duree totale fixe : certains appareils (vitesse SysEx reduite) mettent
-            # bien plus que les ~1 s du DSP7000 (voir Device.receive_dump)
+            # no fixed total timeout: some units (reduced SysEx speed) take much longer
+            # than the ~1 s of the DSP7000 (see Device.receive_dump)
             self.dev.raw = bytearray()
             try:
                 payload = self.dev.receive_dump({0x08, 0x0A}, first=30, idle=15, settle=0.3)
@@ -264,7 +264,7 @@ class Bridge:
                 "persists, send ~/Library/Logs/MSIG.log and the last-*.bin files of the MSIG folder.")
 
     def _save_raw(self, name):
-        """Octets bruts recus pendant la derniere commande (fichier remplace a chaque fois)."""
+        """Raw bytes received during the last command (file replaced each time)."""
         try:
             with open(os.path.join(data_dir(), name), "wb") as f:
                 f.write(bytes(self.dev.raw))
@@ -272,7 +272,7 @@ class Bridge:
             print(f"{name}: {e}")
 
     def _log(self, what, raw_name):
-        """Resume de la derniere reponse dans le journal (diagnostic sur d'autres appareils)."""
+        """Summary of the last reply in the log (diagnostics on other units)."""
         self._save_raw(raw_name)
         r = getattr(self.dev, "last_reply", None) or {}
         print(f"{what}: {r.get('bytes', 0)} bytes in {r.get('seconds', 0)} s, "
@@ -287,12 +287,12 @@ class Bridge:
         if r.get("others"):
             print("  ignored:", ", ".join(r["others"][:8]))
 
-    # ---- base des modules
+    # ---- module database
     def load_dbase(self):
-        """Lance la lecture de la base sur le DSP dans un fil separe et rend la main tout de
-        suite : l'editeur suit l'avancement par /api/dbase-progress. Duree : ~25 s pour les
-        264 ko du DSP7000, plusieurs minutes pour une base plus grande ou une vitesse SysEx
-        reduite sur l'appareil. Pas de duree totale fixe (voir Device.receive_dump)."""
+        """Start reading the database from the DSP in a separate thread and return at once:
+        the editor follows the progress through /api/dbase-progress. Duration: ~25 s for the
+        264 KB of the DSP7000, several minutes for a larger database or a reduced SysEx speed
+        on the unit. No fixed total timeout (see Device.receive_dump)."""
         self._idle()
         if not self.dev:
             raise RuntimeError("DSP not connected: choose the serial port")
@@ -330,8 +330,8 @@ class Bridge:
         return len(mods)
 
     def import_dbase(self, raw=None, path=None, folder=None):
-        """Base des modules depuis un fichier : octets envoyes par l'editeur (champ fichier du
-        navigateur), chemin donne, ou fichier choisi dans un dialogue."""
+        """Module database from a file: bytes sent by the editor (browser file field), a given
+        path, or a file chosen in a dialog."""
         self._idle()
         if raw is None:
             if not path:
@@ -348,7 +348,7 @@ class Bridge:
         return {"count": n, "name": name}
 
     def autodetect(self):
-        """Base absente : cherche un fichier .sbf (ex. sigdbase.sbf) dans le dossier de MSIG."""
+        """No database: look for a .sbf file (e.g. sigdbase.sbf) in the MSIG folder."""
         d = data_dir()
         try:
             names = [n for n in os.listdir(d) if n.lower().endswith(".sbf")]
@@ -376,13 +376,13 @@ class Bridge:
             return f.read()
 
 
-# ---- fichiers : dialogues natifs de macOS (Ouvrir, Enregistrer sous)
+# ---- files: native macOS dialogs (Open, Save As)
 def _as_str(s):
     return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def _osascript(lines):
-    """Execute un AppleScript ; None si l'utilisateur annule le dialogue."""
+    """Run an AppleScript; None if the user cancels the dialog."""
     args = ["/usr/bin/osascript"]
     for line in lines:
         args += ["-e", line]
@@ -438,8 +438,8 @@ def _ask_open_dbase(folder):
                        "POSIX path of f"])
 
 
-# ---- Linux : dialogues zenity (GNOME, Xfce...) ou kdialog (KDE) s'ils sont installes ;
-# sinon l'editeur utilise ceux du navigateur (champ fichier, telechargement).
+# ---- Linux: zenity (GNOME, Xfce...) or kdialog (KDE) dialogs if installed;
+# otherwise the editor uses the browser's (file field, download).
 def _home_folder(folder):
     folder = os.path.expanduser(folder or "")
     return folder if os.path.isdir(folder) else os.path.expanduser("~")
@@ -447,7 +447,7 @@ def _home_folder(folder):
 
 def _run_dialog(args):
     r = subprocess.run(args, capture_output=True, text=True)
-    if r.returncode != 0:  # 1 = annule
+    if r.returncode != 0:  # 1 = cancelled
         return None
     return r.stdout.strip().splitlines()[-1] if r.stdout.strip() else None
 
@@ -500,8 +500,8 @@ def _default_dialogs():
     return none
 
 
-# Dialogues de fichiers et fin du programme : la fenetre native (msig_app.py) remplace
-# ces fonctions par des panneaux attaches a sa fenetre et par la fermeture de l'application.
+# File dialogs and program exit: the native window (msig_app.py) replaces these
+# functions with panels attached to its window and with quitting the application.
 DIALOGS = _default_dialogs()
 HOOKS = {"quit": None}
 
@@ -541,8 +541,8 @@ def make_handler(bridge, editor, http_port, beat):
             self.wfile.write(body)
 
         def _trusted(self):
-            # Seul l'editeur servi ici peut piloter le DSP : refuse les requetes venant
-            # d'autres sites ouverts dans le navigateur (en-tetes Host et Origin).
+            # Only the editor served here may drive the DSP: refuse requests coming from
+            # other sites open in the browser (Host and Origin headers).
             if self.headers.get("Host") not in allowed:
                 return False
             origin = self.headers.get("Origin")
@@ -582,7 +582,7 @@ def make_handler(bridge, editor, http_port, beat):
                 elif self.path == "/api/load-dbase":
                     self._send(200, bridge.load_dbase())
                 elif self.path == "/api/import-dbase":
-                    # corps vide : dialogue Ouvrir ; sinon contenu du fichier choisi dans le navigateur
+                    # empty body: Open dialog; otherwise the content of the file chosen in the browser
                     self._send(200, bridge.import_dbase(raw) if raw else bridge.import_dbase())
                 elif self.path == "/api/connect":
                     j = json.loads(body or "{}")
@@ -604,7 +604,7 @@ def make_handler(bridge, editor, http_port, beat):
                     threading.Thread(target=HOOKS["quit"] or self.server.shutdown, daemon=True).start()
                 else:
                     self._send(404, {"error": "not found"})
-            except Exception as e:  # erreurs du DSP, delais depasses, port occupe
+            except Exception as e:  # DSP errors, timeouts, busy port
                 self._send(500, {"error": str(e)})
     return H
 
@@ -628,9 +628,9 @@ def main():
                     help="stop S seconds after the editor is closed (used by MSIG.app)")
     a = ap.parse_args()
     if BUNDLE and not (sys.stdout and sys.stdout.isatty()):
-        open_log("(browser)")  # lance depuis le menu des applications : messages dans le journal
+        open_log("(browser)")  # launched from the applications menu: messages go to the log
     if BUNDLE and not a.auto_quit:
-        a.auto_quit = 300  # pas de fenetre propre : MSIG s'arrete quand l'editeur est ferme
+        a.auto_quit = 300  # no window of its own: MSIG stops when the editor is closed
 
     url = f"http://127.0.0.1:{a.http}/"
     bridge = Bridge(a.baud, a.id)
@@ -643,9 +643,9 @@ def main():
             raise
         if already_running(url):
             print("MSIG is already running:", url)
-            webbrowser.open(url)  # deja lance : on rouvre simplement l'editeur
+            webbrowser.open(url)  # already running: just reopen the editor
             return
-        # port occupe par un autre programme : port libre choisi par le systeme
+        # port used by another program: free port chosen by the system
         srv = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
     http_port = srv.server_address[1]
     url = f"http://127.0.0.1:{http_port}/"

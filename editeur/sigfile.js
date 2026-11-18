@@ -1,8 +1,8 @@
-// sigfile.js - lecture/ecriture des sigfiles (format texte des algorithmes du DSP)
-// Une ligne = un module : TYPE nom arg1 arg2 ... [; commentaire]
-// Un argument de la forme "module-port" designe une connexion vers la sortie
-// "port" d'un module existant ; tout le reste est une valeur litterale.
-// Le texte est re-ecrit token par token : ce qui n'est pas modifie reste identique.
+// sigfile.js - reading/writing sigfiles (the DSP's text format for algorithms)
+// One line = one module: TYPE name arg1 arg2 ... [; comment]
+// An argument of the form "module-port" is a connection to the "port" output
+// of an existing module; anything else is a literal value.
+// The text is rewritten token by token: whatever is not modified stays identical.
 
 (function (root) {
   "use strict";
@@ -28,7 +28,7 @@
     return toks;
   }
 
-  // Separe le commentaire ";..." hors chaines.
+  // Splits off the ";..." comment (outside strings).
   function splitComment(line) {
     let q = false;
     for (let i = 0; i < line.length; i++) {
@@ -41,7 +41,7 @@
   function parse(text) {
     const lines = text.replace(/\r\n?/g, "\n").split("\n");
     const mods = [];
-    const extra = []; // lignes vides ou commentaires seuls, conservees
+    const extra = []; // blank lines or comment-only lines, kept as is
     lines.forEach((raw, idx) => {
       const [body, comment] = splitComment(raw);
       const toks = tokenize(body);
@@ -70,7 +70,7 @@
     return out.join(eol) + eol;
   }
 
-  // "diff1-out" -> {mod:"diff1", port:"out"} si "diff1" est un module du document.
+  // "diff1-out" -> {mod:"diff1", port:"out"} if "diff1" is a module of the document.
   function asConnection(tok, names) {
     if (tok[0] === '"') return null;
     const k = tok.indexOf("-");
@@ -80,16 +80,16 @@
     return { mod, port };
   }
 
-  // Schema issu de la base du DSP (dbase2json.py) :
+  // Schema taken from the DSP database (dbase2json.py):
   //   fields : [{name, type, ed, min, max, def, desc} | {repeat:"@param"|"N", items:[...]}]
   //   outputs: [{name, type} | {repeat, items}]
-  // Les noms contenant "~n" sont numerotes a l'expansion.
+  // Names containing "~n" are numbered on expansion.
   function repeatCount(spec, values) {
     if (spec[0] === "@") { const v = values[spec.slice(1)]; return /^\d+$/.test(v || "") ? +v : null; }
     return /^\d+$/.test(spec) ? +spec : null;
   }
 
-  // Libelles des arguments d'une ligne ; null si le nombre d'arguments ne correspond pas.
+  // Argument labels for a line; null if the number of arguments does not match.
   function fieldLabels(def, args) {
     if (!def) return null;
     const labels = [], values = {};
@@ -117,7 +117,7 @@
     return v;
   }
 
-  // Sorties d'un module (dependent parfois de ses parametres, ex. HEADM in1..inN).
+  // Outputs of a module (sometimes depend on its parameters, e.g. HEADM in1..inN).
   function outputsOf(def, args) {
     if (!def) return [];
     const values = valuesOf(def, args), out = [];
@@ -132,8 +132,8 @@
     return out;
   }
 
-  // Arguments par defaut d'un nouveau module. `given` (libelle -> valeur) garde des valeurs
-  // existantes : sert a refaire la liste quand un nombre (sorties, sections...) change.
+  // Default arguments for a new module. `given` (label -> value) keeps existing values:
+  // used to rebuild the list when a count (outputs, sections...) changes.
   function defaultArgs(def, head, given) {
     given = given || {};
     const args = [], values = {};
@@ -162,9 +162,9 @@
     return args;
   }
 
-  // Nouvelle liste d'arguments apres le changement de l'argument i. Si c'est un nombre qui fixe
-  // combien d'arguments suivent (sorties de HEADM, entrees d'un MIXER...), la liste est refaite
-  // d'apres la definition : valeurs gardees par libelle, valeurs par defaut pour les nouveaux.
+  // New argument list after argument i changes. If it is a count that sets how many
+  // arguments follow (HEADM outputs, MIXER inputs...), the list is rebuilt from the
+  // definition: values kept by label, default values for the new ones.
   function withArg(def, args, i, v, head) {
     const before = def && fieldLabels(def, args), out = args.slice();
     out[i] = v;
@@ -175,7 +175,7 @@
     return fieldLabels(def, redone) ? redone : out;
   }
 
-  // Graphe : connexions (source -> champ) pour chaque module.
+  // Graph: connections (source -> field) for each module.
   function connections(doc) {
     const names = new Set(doc.mods.map(m => m.name));
     const edges = [];

@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-msig_mac.py - communication (macOS et Linux) avec un DSP7000 (et appareils de la meme famille)
-via RS-232 (adaptateur USB-serie)
-ou via une interface MIDI.
+msig_mac.py - communication (macOS and Linux) with a DSP7000 (and units of the same family)
+over RS-232 (USB-serial adapter)
+or through a MIDI interface.
 
-Protocole reconstitue par analyse statique (interoperabilite).
+Protocol reconstructed by static analysis (interoperability).
 
-Trame SysEx :  F0 1C 70 <id> <cmd> [donnees] F7
-  1C = identifiant fabricant, 70 = modele (famille DSP4000/7000),
-  id = "device ID" (defaut 1, doit correspondre a SETUP/MIDI de l'appareil).
+SysEx frame:  F0 1C 70 <id> <cmd> [data] F7
+  1C = manufacturer ID, 70 = model (DSP4000/7000 family),
+  id = "device ID" (default 1, must match the unit's SETUP/MIDI setting).
 
-Sur RS-232 les octets MIDI sont envoyes tels quels (aucun encapsulage).
+Over RS-232 the MIDI bytes are sent as is (no encapsulation).
 """
 import argparse
 import sys
@@ -19,27 +19,27 @@ import time
 MFR_ID = 0x1C
 MODEL_DSP = 0x70
 
-# Codes de commande observes
+# Observed command codes
 CMD = {
-    "SIGFILE_TEXT_ERRS_ON_UNIT": 0x08,  # envoi/reception sigfile texte (variante "erreurs a l'ecran")
-    "SIGFILE_TEXT": 0x0A,               # envoi/reception sigfile texte
+    "SIGFILE_TEXT_ERRS_ON_UNIT": 0x08,  # send/receive text sigfile ("errors on unit screen" variant)
+    "SIGFILE_TEXT": 0x0A,               # send/receive text sigfile
     "GET_SIGFILE": 0x0B,                # menu MIDI > Get / Update params
-    "DBASE_TEXT": 0x0C,                 # reponse a GET_DBASE (DSP7000 : une trame de 264 ko)
-    "ERROR_TEXT": 0x0D,                 # message d'erreur texte renvoye par l'appareil
+    "DBASE_TEXT": 0x0C,                 # reply to GET_DBASE (DSP7000: a single 264 KB frame)
+    "ERROR_TEXT": 0x0D,                 # text error message returned by the unit
     "GET_DBASE": 0x0E,                  # menu MIDI > Get Dbase
-    "SEND_USER_FILES": 0x0F,            # (non implemente)
+    "SEND_USER_FILES": 0x0F,            # (not implemented)
     "GET_USER_FILES": 0x10,
-    "SEND_SETUP": 0x11,                 # (non implemente)
+    "SEND_SETUP": 0x11,                 # (not implemented)
     "GET_SETUP": 0x12,
-    "BIN_CARD": 0x13,                   # fichier binaire recu -> card.bin
-    "BIN_PROG": 0x15,                   # fichier binaire recu -> prog.bin / envoi d'algorithme compile
-    "BIN_SETUP": 0x16,                  # fichier binaire recu -> setup.bin
-    "SCREEN_DUMP": 0x17,                # reponse a GET_SCREEN
+    "BIN_CARD": 0x13,                   # binary file received -> card.bin
+    "BIN_PROG": 0x15,                   # binary file received -> prog.bin / compiled algorithm upload
+    "BIN_SETUP": 0x16,                  # binary file received -> setup.bin
+    "SCREEN_DUMP": 0x17,                # reply to GET_SCREEN
     "GET_SCREEN": 0x18,
     "PROGNUMS_DUMP": 0x30,
     "GET_PRESET_ALT": 0x35,
     "PRESET_ALT_TEXT": 0x36,
-    "BIN_DATA": 0x39,                   # fichier binaire recu -> data.bin
+    "BIN_DATA": 0x39,                   # binary file received -> data.bin
     "TEXT_NIBBLES": 0x40,
     "SCREEN_DUMP_ALT": 0x42,
 }
@@ -49,12 +49,12 @@ BINARY_FILE_REPLIES = {0x13: "card.bin", 0x15: "prog.bin", 0x16: "setup.bin", 0x
 
 
 # --------------------------------------------------------------------------
-# Encodage
+# Encoding
 # --------------------------------------------------------------------------
 def build_sysex(cmd, data=b"", dev_id=1):
     data = bytes(data)
     if any(b & 0x80 for b in data):
-        raise ValueError("les donnees SysEx doivent etre sur 7 bits (utiliser nibbleize)")
+        raise ValueError("SysEx data must be 7-bit (use nibbleize)")
     return bytes([0xF0, MFR_ID, MODEL_DSP, dev_id & 0x7F, cmd & 0x7F]) + data + b"\xF7"
 
 
@@ -63,9 +63,9 @@ def _nib(b):
 
 
 def nibbleize(data, with_length=True):
-    """Encodage en nibbles des donnees binaires.
-    [longueur 32 bits big-endian en nibbles] + octets en nibbles (poids fort d'abord)
-    + somme de controle = -(somme des octets, longueur incluse) & 0xFF, en nibbles."""
+    """Nibble encoding of binary data.
+    [32-bit big-endian length as nibbles] + bytes as nibbles (high nibble first)
+    + checksum = -(sum of bytes, length included) & 0xFF, as nibbles."""
     out = bytearray()
     csum = 0
     if with_length:
@@ -80,16 +80,16 @@ def nibbleize(data, with_length=True):
 
 
 def denibbleize(nibbles):
-    """Paires (poids fort, poids faible) -> octets."""
+    """(high, low) nibble pairs -> bytes."""
     n = len(nibbles) // 2
     return bytes(((nibbles[2 * i] & 0x0F) << 4) | (nibbles[2 * i + 1] & 0x0F) for i in range(n))
 
 
 # --------------------------------------------------------------------------
-# Decodage du flux entrant
+# Decoding the incoming stream
 # --------------------------------------------------------------------------
 class SysexParser:
-    """Accumule un flux d'octets MIDI et extrait les trames F0..F7."""
+    """Accumulates a MIDI byte stream and extracts F0..F7 frames."""
 
     def __init__(self):
         self.buf = bytearray()
@@ -102,7 +102,7 @@ class SysexParser:
                 self.buf = bytearray([b])
                 self.inside = True
             elif self.inside:
-                if b >= 0xF8:          # messages temps reel : ignores dans un SysEx
+                if b >= 0xF8:          # real-time messages: ignored inside a SysEx
                     continue
                 self.buf.append(b)
                 if b == 0xF7:
@@ -112,11 +112,11 @@ class SysexParser:
 
 
 def parse_frame(frame):
-    """Retourne (dev_id, cmd, payload) ou None si la trame n'est pas une trame DSP."""
+    """Returns (dev_id, cmd, payload), or None if the frame is not a DSP frame."""
     if len(frame) < 6 or frame[0] != 0xF0 or frame[-1] != 0xF7:
         return None
-    # octet de modele non verifie : on envoie 70 (comme le logiciel d'origine, pour tous les
-    # appareils) mais certains appareils de la famille repondent avec leur propre valeur
+    # model byte not checked: we send 70 (like the original software, for all units)
+    # but some units of the family reply with their own value
     if frame[1] != MFR_ID:
         return None
     return frame[3], frame[4], frame[5:-1]
@@ -125,15 +125,15 @@ def parse_frame(frame):
 def describe(frame):
     p = parse_frame(frame)
     if not p:
-        return "trame non DSP: " + frame[:16].hex(" ")
+        return "non-DSP frame: " + frame[:16].hex(" ")
     dev, cmd, payload = p
-    name = CMD_NAME.get(cmd, "INCONNU")
-    return f"id={dev} cmd=0x{cmd:02X} ({name}) {len(payload)} octets"
+    name = CMD_NAME.get(cmd, "UNKNOWN")
+    return f"id={dev} cmd=0x{cmd:02X} ({name}) {len(payload)} bytes"
 
 
 def decode_screen_dump(payload):
-    """Reponse 0x17. Inference : 12 octets d'en-tete (3 entiers 32 bits BE, en nibbles),
-    puis l'image en nibbles. On suppose (largeur, hauteur, taille) - NON VERIFIE."""
+    """Reply 0x17. Inferred: 12-byte header (three 32-bit BE integers, as nibbles),
+    then the image as nibbles. Assumed to be (width, height, size) - NOT VERIFIED."""
     head = denibbleize(payload[:24])
     a, b, size = (int.from_bytes(head[i:i + 4], "big") for i in (0, 4, 8))
     img = denibbleize(payload[24:24 + 2 * size])
@@ -141,14 +141,14 @@ def decode_screen_dump(payload):
 
 
 def looks_garbled(raw):
-    """Reponse illisible : le DSP7000 n'envoie que des octets MIDI (donnees < 0x80 entre F0 et
-    F7). Des octets >= 0x80 en nombre indiquent des reglages serie differents entre l'appareil
-    et MSIG (bits de stop surtout : H8000 regle sur 1 bit de stop, MSIG sur 2)."""
+    """Garbled reply: the DSP7000 only sends MIDI bytes (data < 0x80 between F0 and F7).
+    Many bytes >= 0x80 mean the serial settings differ between the unit and MSIG
+    (mostly stop bits: H8000 set to 1 stop bit, MSIG to 2)."""
     return sum(1 for b in bytes(raw) if b >= 0x80 and b not in (0xF0, 0xF7)) >= 8
 
 
 def write_pbm(path, width, height, img):
-    """Ecrit un PBM 1 bit/pixel si les dimensions sont coherentes avec la taille recue."""
+    """Writes a 1 bit/pixel PBM if the dimensions match the received size."""
     row = (width + 7) // 8
     if row * height > len(img):
         return False
@@ -162,15 +162,15 @@ def write_pbm(path, width, height, img):
 # Transports
 # --------------------------------------------------------------------------
 class SerialLink:
-    """Port serie 8 bits sans parite, 2 bits de stop par defaut (8N2), meme reglage dans les deux
-    sens. Les bits de stop doivent correspondre au reglage de l'appareil : un H8000 regle sur
-    1 bit de stop repond en 8N1, octets colles, et ses reponses arrivent illisibles en 8N2.
-    Le reglage n'est jamais change port ouvert : la 1.0.8 le faisait a chaque envoi et
-    perdait des demandes (l'adaptateur USB emettait encore)."""
+    """Serial port, 8 bits, no parity, 2 stop bits by default (8N2), same setting in both
+    directions. The stop bits must match the unit's setting: an H8000 set to 1 stop bit
+    replies in 8N1 with back-to-back bytes, and its replies arrive garbled in 8N2.
+    The setting is never changed while the port is open: 1.0.8 did so on every send and
+    lost requests (the USB adapter was still transmitting)."""
 
     def __init__(self, port, baud=115200, stopbits=2, rtscts=False):
         import serial  # pyserial
-        kw = {"exclusive": True} if port.startswith("/dev/") else {}  # un seul programme a la fois
+        kw = {"exclusive": True} if port.startswith("/dev/") else {}  # one program at a time
         self.ser = serial.serial_for_url(
             port, baudrate=baud, bytesize=8, parity="N",
             stopbits=stopbits, rtscts=rtscts, timeout=0.1, **kw)
@@ -191,7 +191,7 @@ class SerialLink:
 
 
 class MidiLink:
-    """Transport MIDI optionnel (pip install mido python-rtmidi)."""
+    """Optional MIDI transport (pip install mido python-rtmidi)."""
 
     def __init__(self, in_name, out_name):
         import mido
@@ -231,7 +231,7 @@ class Device:
         self.link.write(frame)
 
     def wait_for(self, cmds, timeout=10.0, idle=None):
-        """Attend une trame dont la commande est dans `cmds`. Les erreurs 0x0D sont levees."""
+        """Waits for a frame whose command is in `cmds`. 0x0D errors are raised."""
         end = time.time() + timeout
         while time.time() < end:
             chunk = self._read()
@@ -249,7 +249,7 @@ class Device:
         raise TimeoutError("no response (check cabling, baud rate, SysEx=on, device ID)")
 
     def _read(self):
-        """Lecture du lien ; tous les octets recus sont aussi gardes dans self.raw (diagnostic)."""
+        """Reads the link; all received bytes are also kept in self.raw (diagnostics)."""
         chunk = self.link.read()
         if chunk and len(self.raw) < 8_000_000:
             self.raw += chunk
@@ -257,19 +257,18 @@ class Device:
 
     def receive_dump(self, cmd, first=60.0, idle=30.0, limit=1800.0, progress=None,
                      settle=2.0):
-        """Recoit une reponse volumineuse (base des modules) sans duree totale fixe.
+        """Receives a large reply (module database) with no fixed total duration.
 
-        La duree depend de l'appareil, de la taille de sa base et du reglage de vitesse
-        SysEx de l'appareil : de 25 s (DSP7000, 264 ko) a plusieurs minutes. On attend donc
-        tant que des octets arrivent ; echec si rien n'arrive pendant `first` secondes apres
-        la demande, ou pendant `idle` secondes en cours de transfert, ou au-dela de `limit`.
-        Les trames du fabricant portant `cmd` (une commande ou un ensemble) sont concatenees
-        (quel que soit l'octet de modele) ; on rend la main `settle` secondes apres la
-        derniere trame retenue.
+        The duration depends on the unit, the size of its database and the unit's SysEx
+        speed setting: from 25 s (DSP7000, 264 KB) to several minutes. So we keep waiting
+        as long as bytes arrive; fails if nothing arrives for `first` seconds after the
+        request, or for `idle` seconds during the transfer, or beyond `limit`.
+        Manufacturer frames carrying `cmd` (one command or a set) are concatenated
+        (whatever the model byte); we return `settle` seconds after the last frame kept.
 
-        `progress(octets, trames, secondes)` est appele regulierement. Retourne les donnees
-        (bytes) sans les en-tetes SysEx ; le resume de l'echange (debut de chaque trame,
-        forme d'en-tete, textes de l'appareil, duree) reste dans self.last_reply."""
+        `progress(bytes, frames, seconds)` is called regularly. Returns the data (bytes)
+        without the SysEx headers; a summary of the exchange (start of each frame, header
+        form, unit texts, duration) is kept in self.last_reply."""
         cmds = {cmd} if isinstance(cmd, int) else set(cmd)
         start = last = got = time.time()
         total, parts, others, heads, notes, tick = 0, [], [], [], [], 0.0
@@ -315,7 +314,7 @@ class Device:
                 raise TimeoutError(f"transfer too long (over {limit / 60:.0f} min, {total} bytes received)")
 
     def collect(self, duration):
-        """Recupere toutes les trames pendant `duration` secondes."""
+        """Collects all frames for `duration` seconds."""
         frames = []
         end = time.time() + duration
         last = None
@@ -327,7 +326,7 @@ class Device:
                 if self.verbose:
                     print("<<", describe(fr), file=sys.stderr)
                 frames.append(fr)
-            # fin de transfert : plus rien recu depuis 3 s apres au moins une trame
+            # end of transfer: nothing received for 3 s after at least one frame
             if frames and not self.parser.inside and time.time() - last > 3:
                 break
         return frames
@@ -341,7 +340,7 @@ def open_device(a):
         link = MidiLink(a.midi_in, a.midi_out)
     else:
         if not a.port:
-            sys.exit("--port requis (ex. /dev/cu.usbserial-XXXX) ou --midi-in/--midi-out")
+            sys.exit("--port required (e.g. /dev/cu.usbserial-XXXX) or --midi-in/--midi-out")
         link = SerialLink(a.port, a.baud, a.stopbits, a.rtscts)
     return Device(link, a.id, a.verbose)
 
@@ -363,27 +362,27 @@ def cmd_get_algo(a):
     d.send(CMD["GET_SIGFILE"])
     cmd, payload = d.wait_for({0x08, 0x0A}, a.timeout)
     text = payload.decode("latin1").strip()
-    text = text.replace("\r\n", "\n").replace("\r", "\n")   # fin de ligne Unix pour l'edition sur Mac
+    text = text.replace("\r\n", "\n").replace("\r", "\n")   # Unix line endings for editing on a Mac
     with open(a.output, "w", newline="\n") as f:
         f.write(text + "\n")
-    print(f"sigfile recu (cmd 0x{cmd:02X}, {len(text)} caracteres) -> {a.output}")
+    print(f"sigfile received (cmd 0x{cmd:02X}, {len(text)} characters) -> {a.output}")
 
 
 def cmd_send_algo(a):
     d = open_device(a)
     text = open(a.file, "rb").read()
     text = bytes(b for b in text if b < 0x80)
-    # l'appareil envoie ses sigfiles en CRLF : on renvoie dans le meme format
+    # the unit sends its sigfiles with CRLF: send back in the same format
     text = text.replace(b"\r\n", b"\n").replace(b"\r", b"\n").strip().replace(b"\n", b"\r\n")
     code = CMD["SIGFILE_TEXT_ERRS_ON_UNIT"] if a.errors_on_unit else CMD["SIGFILE_TEXT"]
     d.send(code, text)
-    print(f"sigfile envoye ({len(text)} octets, cmd 0x{code:02X})")
+    print(f"sigfile sent ({len(text)} bytes, cmd 0x{code:02X})")
     for fr in d.collect(a.listen):
         p = parse_frame(fr)
         if p and p[1] == CMD["ERROR_TEXT"]:
-            print("ERREUR:", p[2].decode("latin1").strip())
+            print("ERROR:", p[2].decode("latin1").strip())
         else:
-            print("reponse:", describe(fr))
+            print("reply:", describe(fr))
 
 
 def cmd_get_screen(a):
@@ -393,13 +392,13 @@ def cmd_get_screen(a):
     open(a.output + ".raw", "wb").write(payload)
     if cmd == 0x17:
         w, h, img = decode_screen_dump(payload)
-        print(f"ecran: en-tete {w} x {h}, {len(img)} octets")
+        print(f"screen: header {w} x {h}, {len(img)} bytes")
         if write_pbm(a.output + ".pbm", w, h, img):
             print("image ->", a.output + ".pbm")
         else:
-            print("dimensions incoherentes : seule la trame brute a ete sauvee")
+            print("inconsistent dimensions: only the raw frame was saved")
     else:
-        print("format 0x42 non decode ; trame brute ->", a.output + ".raw")
+        print("format 0x42 not decoded; raw frame ->", a.output + ".raw")
 
 
 def _dump(a, cmd_name, accept):
@@ -409,23 +408,23 @@ def _dump(a, cmd_name, accept):
     with open(a.output, "wb") as f:
         for fr in frames:
             f.write(fr)
-    print(f"{len(frames)} trames SysEx enregistrees -> {a.output}")
+    print(f"{len(frames)} SysEx frames saved -> {a.output}")
     for fr in frames[:20]:
         print("  ", describe(fr))
 
 
 def cmd_get_dbase(a):
-    """Peut durer plusieurs minutes selon l'appareil : --timeout est le delai d'inactivite."""
+    """Can take several minutes depending on the unit: --timeout is the idle timeout."""
     d = open_device(a)
     d.send(CMD["GET_DBASE"])
 
     def show(n, frames, t):
-        print(f"\r{n / 1024:8.1f} ko recus  {int(t) // 60}:{int(t) % 60:02d}", end="", file=sys.stderr)
+        print(f"\r{n / 1024:8.1f} KB received  {int(t) // 60}:{int(t) % 60:02d}", end="", file=sys.stderr)
     text = d.receive_dump(CMD["DBASE_TEXT"], first=max(a.timeout, 60), idle=max(a.timeout, 30), progress=show)
     print(file=sys.stderr)
     with open(a.output, "wb") as f:
         f.write(build_sysex(CMD["DBASE_TEXT"], text, d.dev_id) if a.output.lower().endswith(".syx") else text)
-    print(f"base des modules : {len(text)} octets -> {a.output}")
+    print(f"module database: {len(text)} bytes -> {a.output}")
 
 
 def cmd_get_setup(a):
@@ -438,7 +437,7 @@ def cmd_get_user_files(a):
 
 def cmd_monitor(a):
     d = open_device(a)
-    print("Ecoute (Ctrl-C pour arreter)...")
+    print("Listening (Ctrl-C to stop)...")
     try:
         while True:
             for fr in d.parser.feed(d.link.read()):
@@ -464,14 +463,14 @@ def cmd_cc(a):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="MSIG : outil en ligne de commande (DSP7000)")
-    ap.add_argument("--port", help="port serie, ex. /dev/cu.usbserial-A10K1234")
+    ap = argparse.ArgumentParser(description="MSIG: command line tool (DSP7000)")
+    ap.add_argument("--port", help="serial port, e.g. /dev/cu.usbserial-A10K1234")
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("--stopbits", type=int, default=2, choices=(1, 2),
-                    help="2 par defaut (8N2) ; doit correspondre au reglage de l'appareil")
-    ap.add_argument("--rtscts", action="store_true", help="controle de flux materiel")
+                    help="2 by default (8N2); must match the unit's setting")
+    ap.add_argument("--rtscts", action="store_true", help="hardware flow control")
     ap.add_argument("--midi-in"), ap.add_argument("--midi-out")
-    ap.add_argument("--id", type=int, default=1, help="device ID SysEx (defaut 1)")
+    ap.add_argument("--id", type=int, default=1, help="SysEx device ID (default 1)")
     ap.add_argument("--timeout", type=float, default=15.0)
     ap.add_argument("-v", "--verbose", action="store_true")
     sp = ap.add_subparsers(dest="cmd", required=True)
@@ -479,7 +478,7 @@ def main(argv=None):
     sp.add_parser("ports").set_defaults(fn=cmd_ports)
     p = sp.add_parser("get-algo"); p.add_argument("-o", "--output", default="algo.sig"); p.set_defaults(fn=cmd_get_algo)
     p = sp.add_parser("send-algo"); p.add_argument("file")
-    p.add_argument("--errors-on-unit", action="store_true", help="utilise 0x08 au lieu de 0x0A")
+    p.add_argument("--errors-on-unit", action="store_true", help="use 0x08 instead of 0x0A")
     p.add_argument("--listen", type=float, default=5.0); p.set_defaults(fn=cmd_send_algo)
     p = sp.add_parser("get-screen"); p.add_argument("-o", "--output", default="screen"); p.set_defaults(fn=cmd_get_screen)
     for name, fn, default in (("get-dbase", cmd_get_dbase, "dbase.syx"),

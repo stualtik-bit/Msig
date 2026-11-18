@@ -1,6 +1,6 @@
-"""Convertit la base de modules du DSP (fichier ecrit par `msig_mac.py get-dbase`)
-en JSON pour l'editeur : editeur/modules_dsp.json.
-Usage : python3 dbase2json.py ../dsp/dbase.syx"""
+"""Converts the DSP module database (file written by `msig_mac.py get-dbase`)
+to JSON for the editor: editeur/modules_dsp.json.
+Usage: python3 dbase2json.py ../dsp/dbase.syx"""
 import json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))

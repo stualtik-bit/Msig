@@ -1,8 +1,8 @@
-// random.js - generateur de patches aleatoires mais utilisables (bouton Random de MSIG)
-// Regles : entree stereo -> chaine de modules choisis (100 % wet) -> limiteur -> sorties ; chaque module ne lit
-// que des modules places avant lui, sauf une boucle de feedback optionnelle, bornee (gain <= 0.6,
-// uniquement des blocs sans gain + HIGHCUT). Reglages tires dans des plages sures ; potards et page
-// de menu pour regler le patch depuis le DSP. validate() controle le resultat avant de le proposer.
+// random.js - generator of random but usable patches (MSIG's Random button)
+// Rules: stereo input -> chain of chosen modules (100 % wet) -> limiter -> outputs; each module only reads
+// modules placed before it, except for one optional, bounded feedback loop (gain <= 0.6,
+// gainless blocks + HIGHCUT only). Settings drawn from safe ranges; knobs and a menu page
+// to tweak the patch from the DSP. validate() checks the result before offering it.
 (function (root) {
   "use strict";
 
@@ -33,7 +33,7 @@
   const plain = s => String(s == null ? "" : s).replace(/^=/, "");
   const isNum = s => /^-?(\d+\.?\d*|\.\d+)$/.test(String(s));
 
-  // Arguments d'un module : valeur de p(label, n, vals) si definie, sinon la valeur par defaut de la base.
+  // Module arguments: value from p(label, n, vals) if defined, otherwise the database default.
   function buildArgs(def, head, p) {
     const args = [], vals = {};
     (function walk(items, n) {
@@ -62,10 +62,10 @@
   }
 
   // ---------------------------------------------------------------- catalogue
-  // io : mono (1 entree -> 1 sortie), m2s (mono -> stereo), stereo (2 -> 2).
-  // params(R) : valeurs ; une cle "x~n" peut etre une fonction (n, vals).
-  // knobs : parametres pilotables par un potard ; jitter : cles decalees sur la 2e instance stereo.
-  // loop : bloc sans gain, autorise dans la boucle de feedback.
+  // io: mono (1 input -> 1 output), m2s (mono -> stereo), stereo (2 -> 2).
+  // params(R): values; an "x~n" key can be a function (n, vals).
+  // knobs: parameters a knob can control; jitter: keys offset on the 2nd stereo instance.
+  // loop: gainless block, allowed in the feedback loop.
   const K = (key, label, fmt, min, max) => ({ key, label, fmt, min, max });
   const CATALOG = [
     { type: "FILTER", io: "mono", w: 3, in: ["in"], out: "out",
@@ -164,14 +164,14 @@
         return { m: sh, outs: [sh.name + "-out"] };
       } },
   ];
-  // familles sonores, pour les styles
+  // sound families, for the styles
   const TAGS = { FILTER: ["filter"], TONE: ["filter"], EQ: ["filter"], MODFILTER: ["mod", "filter"], PHASESHIFT: ["mod"],
     DISTORT: ["dirt"], QUANTIZE: ["dirt", "glitch"], AMPMOD: ["mod"], DELAY: ["delay"], COMB: ["dirt", "delay"],
     ALLPASS: ["diffuse"], DETUNE: ["pitch", "mod"], PITCHSHIFT: ["pitch"], FREQSHIFT: ["pitch", "glitch"],
     REVDLY: ["glitch", "delay"], DIFFUSOR: ["diffuse"], DIFFCHORUS: ["diffuse", "mod"], STEREOTAPS: ["delay"],
     EASYTAPS: ["delay", "glitch"], REVERB_A: ["reverb"], REVERB_B: ["reverb"], STEREOSHIFT: ["pitch"] };
   CATALOG.forEach(c => { c.tags = c.tags || TAGS[c.type] || []; });
-  // caractere : poids de chaque famille, famille "signature" imposee, etapes, boucle, formes possibles
+  // character: weight of each family, required "signature" family, steps, loop, possible shapes
   const STYLES = {
     ambient: { w: { reverb: 3, diffuse: 3, delay: 2, pitch: 1, mod: 1, filter: 1 }, sig: "reverb", stages: [2, 4], loop: 0.15,
       shapes: { series: 3, parallel: 2, dual: 1, pingpong: 1 } },
@@ -190,9 +190,9 @@
     lofi: { w: { dirt: 3, filter: 3, glitch: 2, mod: 1, delay: 1 }, sig: "lofi", stages: [2, 5], loop: 0.1,
       shapes: { series: 3, dual: 1, parallel: 1 } },
   };
-  // modules signature supplementaires par caractere
+  // extra signature modules per character
   const SIGNATURE = { metal: ["COMB", "FREQSHIFT", "RINGMOD"], lofi: ["QUANTIZE", "DECIMATE", "DISTORT"] };
-  // perte de niveau typique (dB) compensee par le gain de sortie
+  // typical level loss (dB) made up by the output gain
   const LOSS = { REVERB_A: 6, REVERB_B: 6, DIFFUSOR: 2, DIFFCHORUS: 2, FILTER: 3, MODFILTER: 4, EQ: 1, RINGMOD: 4,
     AMPMOD: 3, REVERSE: 1, REVDLY: 1, STEREOTAPS: 2, EASYTAPS: 3, PHASESHIFT: 1, DECIMATE: 1, COMB: -1, DISTORT: 0 };
 
@@ -252,7 +252,7 @@
       return sharedLfo;
     };
 
-    // place un module du catalogue ; ins : signaux d'entree ; renvoie ses sorties audio
+    // places a catalogue module; ins: input signals; returns its audio outputs
     function place(c, ins, jitter, fixed) {
       lossDb += LOSS[c.id || c.type] || 0;
       if (c.build) return c.build(R, ins, { add, knob: k => knobs.push(k) });
@@ -269,7 +269,7 @@
         let v = pv[label] !== undefined ? pv[label] : pv[it.name];
         if (typeof v === "function") v = v(n, vals);
         if (v === undefined) return undefined;
-        // borne dans les limites numeriques de la base
+        // clamp to the numeric limits of the database
         const lo = boundOf(it.min, vals), hi = boundOf(it.max, vals);
         if (typeof v === "number") { if (lo !== null) v = Math.max(lo, v); if (hi !== null) v = Math.min(hi, v); }
         return v;
@@ -296,7 +296,7 @@
     };
     const isSig = c => (SIGNATURE[styleName] ? SIGNATURE[styleName].includes(c.id || c.type) : c.tags.includes(style.sig));
 
-    // ---- forme du patch
+    // ---- patch shape
     const shapeName = (() => {
       const e = Object.entries(style.shapes).filter(([k]) => k !== "resonator" || DEFS.COMB);
       let x = R.lin(0, e.reduce((a, [, w]) => a + w, 0));
@@ -307,7 +307,7 @@
     let L = H + "-in1", Rr = H + "-in2";
     let haveReverb = false, haveLoop = false, sigDone = false;
     const label = c => c.id || c.type;
-    // choix d'un module : le premier est un module "signature" du caractere
+    // module choice: the first one is a "signature" module of the character
     const stagePick = filter => {
       if (!sigDone && avail.some(c => filter(c) && isSig(c))) { sigDone = true; return pickRecipe(c => filter(c) && isSig(c)); }
       const c = pickRecipe(filter);
@@ -328,7 +328,7 @@
     function feedbackLoop(src, pingpong) {
       haveLoop = true;
       const fb = R.lin(0.25, 0.55);
-      // le retour est connu apres coup : on cree le MIX, puis on corrige in2
+      // the return is only known afterwards: create the MIX, then fix in2
       const mix = { type: "MIX", name: uniq("fbmix"), args: buildArgs(DEFS.MIX, H, l => ({ in1: src, amp1: 0.7, amp2: fb })[l]) };
       mods.push(mix);
       let sig = mix.name + "-out";
@@ -351,7 +351,7 @@
       chain.push((pingpong ? "ping-pong loop: " : "feedback loop: ") + names.join(" > "));
       return pingpong ? [left, sig] : [sig, sig];
     }
-    // une etape de la chaine serie
+    // one step of the series chain
     function stage() {
       if (!haveLoop && avail.some(c => c.type === "DELAY") && DEFS.MIX && DEFS.HIGHCUT && R.chance(style.loop)) {
         [L, Rr] = feedbackLoop(sum(L, Rr), false);
@@ -369,13 +369,13 @@
         chain.push(label(c));
         const x = place(c, [L]); L = Rr = x.outs[0]; addKnob(c, [x.m]);
       } else if (c.build || R.chance(0.45)) {
-        // gauche et droite traitees par des modules differents
+        // left and right processed by different modules
         const c2 = pickRecipe(x => x.io === "mono");
         chain.push(label(c) + " | " + label(c2));
         const a = place(c, [L]), b = place(c2, [Rr]);
         L = a.outs[0]; Rr = b.outs[0]; addKnob(c, [a.m]); addKnob(c2, [b.m]);
       } else {
-        // deux instances liees, parametres legerement decales a droite
+        // two linked instances, parameters slightly offset on the right
         chain.push(label(c) + " (stereo)");
         const a = place(c, [L]);
         const b = place(c, [Rr], true);
@@ -410,7 +410,7 @@
       [L, Rr] = feedbackLoop(sum(L, Rr), true);
       for (let i = R.int(0, 2); i > 0; i--) stage();
     } else if (shapeName === "resonator") {
-      // banc de COMB accordes (intervalles musicaux), remixes en stereo
+      // bank of tuned COMBs (musical intervals), remixed to stereo
       const src = sum(L, Rr), root = R.log(70, 380);
       const ratios = R.pick([[1, 1.5, 2, 3], [1, 1.25, 1.5, 2], [1, 2, 3, 4], [1, 1.335, 1.5, 2], [1, 1.2, 1.5, 1.8]]);
       const fbk = R.lin(0.55, 0.82);
@@ -429,7 +429,7 @@
       for (let st = 0; st < nStages; st++) stage();
     }
 
-    // sortie encore mono : on termine le plus souvent par un module stereo
+    // output still mono: usually end with a stereo module
     if (L === Rr && R.chance(0.8)) {
       const c = pickRecipe(c => (c.io === "m2s" || c.io === "stereo") && noRev(c));
       chain.push(label(c));
@@ -455,13 +455,13 @@
         if (b1 !== null) hi = Math.min(hi, b1);
       });
       if (!(hi > lo)) return;
-      if (f && f.type !== "ctl_in") return;   // seuls les parametres de controle acceptent un potard
+      if (f && f.type !== "ctl_in") return;   // only control parameters accept a knob
       knobs.push({ base: k.label.replace(/[^a-z]/g, "").slice(0, 6) || "knob", label: k.label, fmt: k.fmt, min: lo, max: hi,
         def: Math.min(hi, Math.max(lo, v)), targets: ms.map(m => ({ m, key: k.key })) });
     }
 
-    // 100 % wet (le dosage direct/traite se fait dans le systeme du DSP7000) ; gain de sortie qui
-    // compense les pertes estimees de la chaine, puis limiteur qui plafonne le niveau
+    // 100 % wet (the dry/wet balance is set in the DSP7000 system); output gain that
+    // makes up the chain's estimated losses, then a limiter that caps the level
     const gainDb = Math.round(Math.max(0, Math.min(18, 3 + lossDb / lossDiv)) * 10) / 10;
     const gl = add("GAIN", "level", l => ({ in: L, gain: gainDb })[l]);
     const gr = L === Rr ? gl : add("GAIN", "level", l => ({ in: Rr, gain: gainDb })[l]);
@@ -474,7 +474,7 @@
       outR = lim(outR, "limitr").name + "-out";
     }
 
-    // potards (au plus 5) et pages de menu
+    // knobs (5 at most) and menu pages
     const ui = [];
     knobs.slice(0, 5).forEach(k => {
       const name = uniq(k.base);
@@ -509,7 +509,7 @@
     return out.slice(0, 8).map(t => t.replace(/"/g, "'"));
   }
 
-  // borne numerique d'un champ (min/max), y compris "@param" ; null si expression non resolue
+  // numeric bound of a field (min/max), including "@param"; null if the expression is unresolved
   function boundOf(b, vals) {
     const p = plain(b);
     if (isNum(p)) return +p;
@@ -519,7 +519,7 @@
     return null;
   }
 
-  // ---------------------------------------------------------------- verification
+  // ---------------------------------------------------------------- validation
   function validate(text, DEFS) {
     const Sg = S();
     const doc = Sg.parse(text);
@@ -560,7 +560,7 @@
           }
         }
       });
-      // pieges de silence
+      // silence traps
       const v = k => vals[k];
       if (m.type === "HIGHCUT" && +v("freq") < 500 && isNum(v("freq"))) errs.push(m.name + ": highcut too low");
       if (/^(GATE|GATE2|EXPANDER|SWITCH|ISWITCH|OSWITCH|DUCKER)$/.test(m.type)) errs.push(m.name + ": risky module");
@@ -568,7 +568,7 @@
       if (m.type === "COMB" && isNum(v("feedback")) && Math.abs(+v("feedback")) > 0.85) errs.push(m.name + ": comb feedback too high");
       if (/^REVERB/.test(m.type) && isNum(v("decay")) && +v("decay") > 20) errs.push(m.name + ": decay too long");
     });
-    // boucles : toute arete vers un module place apres (sauf HEADM) doit aboutir a un MIX fbmix dont le gain de retour <= 0.6
+    // loops: any edge to a module placed later (except HEADM) must end at a MIX fbmix whose return gain <= 0.6
     edges.forEach(e => {
       const to = doc.mods[e.i];
       if (to.type === "HEADM") return;
@@ -586,7 +586,7 @@
       const knob = doc.mods.find(k => g === k.name + "-out");
       const gmax = knob ? +knob.args[3] : +g;
       if (!(gmax <= 0.6)) errs.push(mx.name + ": feedback gain above 0.6");
-      // blocs autorises dans la boucle
+      // blocks allowed in the loop
       const back = {}; edges.forEach(e => { (back[e.to] = back[e.to] || []).push(e.from); });
       const seen = new Set(), stack = [String(vals.in2).replace(/-\w+$/, "")];
       while (stack.length) {
@@ -599,7 +599,7 @@
         (back[n] || []).forEach(f => stack.push(f));
       }
     });
-    // sorties : audio, issues de l'entree
+    // outputs: audio, fed from the input
     const head = doc.mods.find(m => m.type === "HEADM");
     if (!head || !head._labels) errs.push("HEADM missing");
     else {

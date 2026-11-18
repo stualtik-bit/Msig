@@ -1,4 +1,4 @@
-"""Tests hors materiel : encodage/decodage et dialogue avec un DSP simule sur pseudo-terminal."""
+"""Hardware-free tests: encoding/decoding and a dialog with a DSP simulated on a pseudo-terminal."""
 import os, sys, threading, time, tty
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import msig_mac as v
@@ -26,7 +26,7 @@ def test_parser_split_chunks():
 
 
 def fake_dsp(fd, stop):
-    """Repond a GET_SIGFILE par un sigfile texte et a GET_SCREEN par une image 16x2."""
+    """Replies to GET_SIGFILE with a text sigfile and to GET_SCREEN with a 16x2 image."""
     parser = v.SysexParser()
     while not stop.is_set():
         try:
@@ -59,10 +59,10 @@ def test_dialog_over_pty(tmp_path):
 
 
 class SlowLink:
-    """Liaison simulee : livre des morceaux avec des pauses (appareil lent, vitesse SysEx reduite)."""
+    """Simulated link: delivers chunks with pauses (slow unit, reduced SysEx speed)."""
 
     def __init__(self, script):
-        self.script = list(script)  # (pause en s, octets)
+        self.script = list(script)  # (pause in s, bytes)
         self.t = None
 
     def read(self):
@@ -80,7 +80,7 @@ def test_receive_dump_slow_multi_frames():
     text = b"{\r\n" + b"x" * 5000 + b"\r\n}\r\n"
     f1, f2 = v.build_sysex(0x0C, text[:3000]), v.build_sysex(0x0C, text[3000:])
     stream = f1 + f2
-    # 3 morceaux separes de pauses de 1,5 s, delai d inactivite de 2 s : le transfert doit aboutir
+    # 3 chunks separated by 1.5 s pauses, 2 s idle timeout: the transfer must succeed
     link = SlowLink([(0.3, stream[:2000]), (1.5, stream[2000:4500]), (1.5, stream[4500:])])
     d = v.Device(link)
     seen = []
@@ -106,13 +106,13 @@ def test_dbase_file_formats():
             b"   {\r\n   TYPE:OPERATOREND\r\n   NAME:opend\r\n   }\r\n}\r\n\x00")
     ref = db.convert(text)
     assert list(ref) == ["GAIN"]
-    assert db.convert(v.build_sysex(0x0C, text.replace(b"\x00", b""))) == ref       # .syx, une trame
-    assert db.convert(v.build_sysex(0x0C, text[:40]) + v.build_sysex(0x0C, text[40:-1])) == ref  # plusieurs
+    assert db.convert(v.build_sysex(0x0C, text.replace(b"\x00", b""))) == ref       # .syx, one frame
+    assert db.convert(v.build_sysex(0x0C, text[:40]) + v.build_sysex(0x0C, text[40:-1])) == ref  # several
     assert db.convert(b"garbage") == {}
 
 
 def test_reply_with_other_model_byte_and_slow_unit():
-    # appareil qui repond avec un autre octet de modele, lentement, en deux trames
+    # unit that replies with another model byte, slowly, in two frames
     text = b"  ; test\r\nIN_A in\r\nOUT_A out in  "
     f1 = bytes([0xF0, 0x1C, 0x5E, 0x01, 0x0A]) + text[:12] + b"\xF7"
     f2 = bytes([0xF0, 0x1C, 0x5E, 0x01, 0x0A]) + text[12:] + b"\xF7"
@@ -123,17 +123,17 @@ def test_reply_with_other_model_byte_and_slow_unit():
 
 
 def misframe(data, rx_stop):
-    """Ce que lit un recepteur a `rx_stop` bits de stop quand l'appareil emet en 8N1, octets
-    colles (simulation bit par bit). Avec 2 bits de stop, le bit de start suivant est pris pour le
-    2e bit de stop et la lecture se recale au milieu d'un octet : c'est ce qu'a recu un testeur
-    dont l'appareil etait regle sur 1 bit de stop (en-tetes « f0 04 05 0a », « f0 04 05 17 »)."""
+    """What a receiver with `rx_stop` stop bits reads when the unit transmits in 8N1 with
+    back-to-back bytes (bit-by-bit simulation). With 2 stop bits, the next start bit is taken as
+    the 2nd stop bit and reading resyncs in the middle of a byte: this is what a tester received
+    whose unit was set to 1 stop bit (headers "f0 04 05 0a", "f0 04 05 17")."""
     bits = [1, 1]
     for b in data:
         bits += [0] + [(b >> i) & 1 for i in range(8)] + [1]
     bits += [1] * 20
     out, i = bytearray(), 2
     while True:
-        while i < len(bits) and not (bits[i - 1] == 1 and bits[i] == 0):   # front de start
+        while i < len(bits) and not (bits[i - 1] == 1 and bits[i] == 0):   # start edge
             i += 1
         if i + 9 >= len(bits):
             return bytes(out)
@@ -147,7 +147,7 @@ SCREEN_REPLY = v.build_sysex(0x17, b"".join(v._nib(b) for b in _head + b"\xff" *
 
 
 def test_misframe_model():
-    assert misframe(SIG_REPLY, 1) == SIG_REPLY                      # memes reglages : intact
+    assert misframe(SIG_REPLY, 1) == SIG_REPLY                      # same settings: intact
     assert misframe(SIG_REPLY, 2).startswith(bytes.fromhex("f0 04 05 0a"))
     assert misframe(SCREEN_REPLY, 2).startswith(bytes.fromhex("f0 04 05 17 00 00 00 08 00 00 00 04"))
 
@@ -159,7 +159,7 @@ def test_garbled_reply_is_detected_not_accepted():
         with pytest.raises(TimeoutError):
             d.receive_dump(cmds, first=1, idle=1, settle=0.3)
         assert v.looks_garbled(d.raw)
-    # une vraie reponse DSP7000 n'est jamais prise pour une reponse illisible
+    # a real DSP7000 reply is never mistaken for a garbled reply
     assert not v.looks_garbled(v.build_sysex(0x0A, b"  ; test\r\nIN_A in\r\n" * 50))
     head = (240).to_bytes(4, "big") + (64).to_bytes(4, "big") + (1920).to_bytes(4, "big")
     assert not v.looks_garbled(v.build_sysex(0x17, b"".join(v._nib(b) for b in head + bytes(range(256)) * 7)))
@@ -176,7 +176,7 @@ def test_reply_returns_soon_after_frame():
 
 
 def test_serial_link_keeps_one_setting():
-    # 1.0.9 : meme reglage a l'envoi et a la reception, jamais modifie port ouvert
+    # 1.0.9: same setting for sending and receiving, never changed while the port is open
     link = v.SerialLink("loop://", 115200)
     assert link.ser.stopbits == 2 and "2 stop bits" in link.describe()
     seen = []

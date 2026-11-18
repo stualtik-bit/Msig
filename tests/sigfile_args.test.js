@@ -1,5 +1,5 @@
-// node tests/sigfile_args.test.js : libelles des arguments quand un nombre (sorties...) change.
-// Definitions minimales ecrites a la main (aucune base de modules d'un appareil).
+// node tests/sigfile_args.test.js: argument labels when a count (outputs...) changes.
+// Minimal hand-written definitions (no module database from a unit).
 const assert = require("assert"), path = require("path");
 const S = require(path.join(__dirname, "..", "editeur", "sigfile.js"));
 const HEADM = { fields: [
@@ -26,9 +26,9 @@ let m = S.defaultArgs(MIXER, "adc");
 m = S.withArg(MIXER, m, 1, "osc", "adc");
 m = S.withArg(MIXER, m, 0, "3", "adc");
 assert.strictEqual(labels(MIXER, m), "ninputs=3 in1=osc in2=adc-null in3=adc-null gain1=-3 gain2=-3 gain3=-3");
-// un argument ordinaire ne touche pas a la liste
+// an ordinary argument does not touch the list
 assert.deepStrictEqual(S.withArg(MIXER, m, 4, "-6", "adc"), ["3", "osc", "adc-null", "adc-null", "-6", "-3", "-3"]);
-// avant la 1.0.9 : simple affectation, plus aucun libelle (affiches arg1, arg2...)
+// before 1.0.9: plain assignment, no labels left (shown as arg1, arg2...)
 const old = S.defaultArgs(MIXER, "adc"); old[0] = "3";
 assert.strictEqual(S.fieldLabels(MIXER, old), null);
 console.log("sigfile_args: ok");

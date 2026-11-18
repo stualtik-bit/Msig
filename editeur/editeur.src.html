@@ -171,17 +171,17 @@ body.native .menu, body.native #bQuit { display: none !important; }
 <script>/*RANDOM*/</script>
 <script>
 "use strict";
-// Base des modules : integree au fichier (version personnelle) ou lue sur le DSP par la passerelle.
+// Module database: embedded in the file (personal build) or read from the DSP by the gateway.
 let DEFS = /*DEFS*/ || {};
 const S = window.Sigfile;
 const $ = id => document.getElementById(id);
-// Fenetre native (MSIG.app) : menus et dialogues de macOS ; sinon onglet de navigateur.
+// Native window (MSIG.app): macOS menus and dialogs; otherwise a browser tab.
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MODKEY = IS_MAC ? "Cmd" : "Ctrl";
 const NATIVE = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.msig);
 const nativePost = m => { if (NATIVE) window.webkit.messageHandlers.msig.postMessage(m); };
-// Question dans la page (remplace confirm et prompt, indisponibles ou bloquants selon le navigateur) :
-// ask(texte) -> true/false ; ask(texte, valeur) -> texte saisi ou null.
+// In-page question (replaces confirm and prompt, unavailable or blocking depending on the browser):
+// ask(text) -> true/false; ask(text, value) -> entered text or null.
 function ask(message, def) {
   return new Promise(res => {
     const isPrompt = def !== undefined, m = $("modal"), inp = $("mInput");
@@ -203,8 +203,8 @@ function ask(message, def) {
 const asking = () => !$("modal").hidden;
 const status = (msg, warn) => { const s = $("status"); s.textContent = msg; s.className = warn ? "warn" : ""; };
 
-// ---------------------------------------------------------------- etat
-// Patch minimal : HEADM (entrees 1-2 reliees directement aux sorties 1-2) puis TAIL.
+// ---------------------------------------------------------------- state
+// Minimal patch: HEADM (inputs 1-2 wired straight to outputs 1-2) then TAIL.
 function blankPatch(title) {
   const t = (title || "New").replace(/"/g, "'").slice(0, 19);
   return `HEADM adc 2 2 adc-in1 adc-in2 "${t}" "" 0\nTAIL as\n`;
@@ -221,7 +221,7 @@ const kind = t => (t || "").replace(/_(in|out)$/, "");
 const headName = () => (doc.mods.find(m => /^HEAD/.test(m.type)) || { name: "adc" }).name;
 const isHead = m => /^HEAD/.test(m.type);
 
-// Change un argument (S.withArg refait la liste si c'est un nombre de sorties, d'entrees...).
+// Changes an argument (S.withArg rebuilds the list if it is a count of outputs, inputs...).
 function setArg(m, i, v) { m.args = S.withArg(DEFS[m.type], m.args, i, v, headName()); }
 
 function labelsOf(m) {
@@ -229,7 +229,7 @@ function labelsOf(m) {
   return l || m.args.map((_, i) => ({ label: "arg" + (i + 1), type: null }));
 }
 
-// type d'une sortie : definition de l'aide, sinon deduit du nom
+// output type: from the help definition, otherwise inferred from the name
 function outType(modName, port) {
   const m = doc.mods.find(x => x.name === modName);
   const o = m && S.outputsOf(DEFS[m.type], m.args).find(x => x.name === port);
@@ -246,7 +246,7 @@ function edgeKind(e) {
   return kind((l && l.type) || outType(e.from, e.port));
 }
 
-// ---------------------------------------------------------------- disposition
+// ---------------------------------------------------------------- layout
 function autoLayout() {
   const names = doc.mods.map(m => m.name);
   const edges = S.connections(doc);
@@ -275,9 +275,9 @@ function autoLayout() {
   if (head) head.posOut = { x: (maxD + 2) * (NODE_W + 70), y: 0 };
 }
 
-// ---------------------------------------------------------------- rendu
+// ---------------------------------------------------------------- rendering
 function nodeParts(m) {
-  // HEADM est affiche en deux blocs : entrees du preset (sorties du module) et sorties du preset
+  // HEADM is drawn as two blocks: preset inputs (module outputs) and preset outputs
   const labels = labelsOf(m);
   const names = new Set(doc.mods.map(x => x.name));
   const inputs = [];
@@ -297,7 +297,7 @@ function nodeHeight(m) {
   return HEAD + 8 + ROW * Math.max(p.inputs.length, p.outputs.length, 1);
 }
 
-const portPos = {}; // "mod.port" -> {x,y} (sorties) ; "mod#i" -> {x,y} (entrees)
+const portPos = {}; // "mod.port" -> {x,y} (outputs); "mod#i" -> {x,y} (inputs)
 function render() {
   $("pname").textContent = patchName() || "(untitled)";
   nativePost({ type: "state", title: patchName(), dirty: hist.i !== hist.saved });
@@ -357,7 +357,7 @@ function drawNode(parent, m, pos, title, inputs, outputs, part) {
     const tx = svgEl("text", { class: "p", x: NODE_W - 7, y: y + 3.5, "text-anchor": "end" }, g); tx.textContent = o;
     portPos[m.name + "." + o] = { x: pos.x + NODE_W, y: pos.y + y };
   });
-  // deplacement
+  // dragging
   g.addEventListener("pointerdown", ev => {
     ev.stopPropagation();
     if (ev.target.classList.contains("pin")) return startCable(ev, ev.target);
@@ -390,7 +390,7 @@ function applyView() { $("vp").setAttribute("transform", `translate(${view.x},${
   }, { passive: false });
 })();
 
-// ---------------------------------------------------------------- inspecteur
+// ---------------------------------------------------------------- inspector
 function allOutputs() {
   const list = [];
   doc.mods.forEach(m => {
@@ -491,7 +491,7 @@ function deleteModule(m) {
 
 function changed() { render(); renderInspector(); $("txt").value = S.serialize(doc); record(); }
 
-// ---------------------------------------------------------------- ajout
+// ---------------------------------------------------------------- add
 function defaultArgs(type) { return S.defaultArgs(DEFS[type], headName()); }
 
 function addModule() {
@@ -508,7 +508,7 @@ function addModule() {
   select(m); changed();
 }
 
-// ---------------------------------------------------------------- onglets / fichiers
+// ---------------------------------------------------------------- tabs / files
 function showTab(t) {
   ["Mod", "Text", "Add"].forEach(x => { $("p" + x).hidden = x !== t; $("t" + x).classList.toggle("on", x === t); });
   if (t === "Text") $("txt").value = S.serialize(doc);
@@ -571,9 +571,9 @@ function loadText(text, name) {
   status(`${fileName} : ${doc.mods.length} modules.` + (undoc.length ? ` Not in the DSP database: ${undoc.join(", ")}.` : ""));
 }
 
-let filePath = null;  // chemin du fichier sur l'ordinateur (ouvert ou enregistre via la passerelle)
+let filePath = null;  // path of the file on the computer (opened or saved via the gateway)
 const folderOf = p => (p ? p.replace(/\/[^/]*$/, "") : "");
-const gwDialogs = () => !!GW && GW.dialogs !== false;  // dialogues de fichiers du systeme (sinon ceux du navigateur)
+const gwDialogs = () => !!GW && GW.dialogs !== false;  // system file dialogs (otherwise the browser's)
 $("bOpen").onclick = async () => {
   if (!gwDialogs()) return $("file").click();
   try {
@@ -609,7 +609,7 @@ async function saveDoc(as) {
     } catch (e) { status("Save failed: " + e.message, true); }
     return;
   }
-  // sans passerelle (fichier ouvert directement dans le navigateur) : telechargement
+  // no gateway (file opened directly in the browser): download
   let fn = name;
   if (as) {
     const t = await ask("File name:", name);
@@ -626,11 +626,11 @@ async function saveDoc(as) {
 $("bSave").onclick = () => saveDoc(false);
 $("bSaveAs").onclick = () => saveDoc(true);
 
-// ---------------------------------------------------------------- nom du patch (texte de HEADM)
+// ---------------------------------------------------------------- patch name (HEADM text)
 function headIndex() {
   const h = doc.mods.find(isHead);
   if (!h) return null;
-  const i = 2 + (+h.args[1] || 0);  // HEADM nin nout out1..outN "nom" "tag" ...
+  const i = 2 + (+h.args[1] || 0);  // HEADM nin nout out1..outN "name" "tag" ...
   return i < h.args.length ? { h, i } : null;
 }
 function patchName() { const p = headIndex(); return p ? p.h.args[p.i].replace(/^"|"$/g, "") : ""; }
@@ -647,7 +647,7 @@ async function renamePatch() {
 }
 $("pname").onclick = renamePatch;
 
-// ---------------------------------------------------------------- liaison serie (Web Serial)
+// ---------------------------------------------------------------- serial link (Web Serial)
 const DSP = {
   port: null, reader: null, buf: [], inside: false, waiters: [], devId: 1, rx: 0, frames: 0,
   frame(cmd, data) { return new Uint8Array([0xF0, 0x1C, 0x70, this.devId, cmd, ...(data || []), 0xF7]); },
@@ -655,8 +655,8 @@ const DSP = {
     if (!("serial" in navigator)) throw new Error("Web Serial unavailable: use Chrome or Edge.");
     this.port = await navigator.serial.requestPort();
     await this.port.open({ baudRate: baud, dataBits: 8, stopBits: +$("stopbits").value, parity: "none", flowControl: "none", bufferSize: 65536 });
-    // pyserial active DTR et RTS a l'ouverture, Chrome non : sans eux le DSP ne renvoie rien
-    // (avec un cable droit, RTS du Mac arrive sur le CTS du DSP).
+    // pyserial raises DTR and RTS on open, Chrome does not: without them the DSP sends nothing back
+    // (with a straight cable, the Mac's RTS goes to the DSP's CTS).
     try { await this.port.setSignals({ dataTerminalReady: true, requestToSend: true }); } catch (e) { console.warn(e); }
     this.loop();
   },
@@ -776,7 +776,7 @@ $("bScreenRefresh").onclick = () => grabScreen().catch(e => status(e.message, tr
 $("bScreenClose").onclick = () => $("dScreen").close();
 $("bScreenPng").onclick = () => { const a = document.createElement("a"); a.href = $("screenCanvas").toDataURL("image/png"); a.download = "dsp_screen.png"; a.click(); };
 
-// ---------------------------------------------------------------- passerelle msig_serveur.py
+// ---------------------------------------------------------------- msig_serveur.py gateway
 let GW = null;
 async function api(path, body) {
   const r = await fetch("/api/" + path, { method: "POST", body: body || "" });
@@ -788,7 +788,7 @@ async function gwStatus() { const r = await fetch("/api/status"); if (!r.ok) thr
 function gwShow() {
   const on = !!GW.port;
   ["bGet", "bSend", "bScreen"].forEach(id => $(id).disabled = !on);
-  // reglages serie retenus par la passerelle (vitesse, bits de stop : comme sur l'appareil)
+  // serial settings stored by the gateway (speed, stop bits: same as on the unit)
   if (GW.baud && ![...$("baud").options].some(o => +o.value === GW.baud)) $("baud").add(new Option(String(GW.baud)));
   if (GW.baud) $("baud").value = String(GW.baud);
   if (GW.stopbits) $("stopbits").value = String(GW.stopbits);
@@ -824,8 +824,8 @@ async function gwConnect() {
   gwShow();
   status("Connected to the DSP (" + GW.port + ", " + GW.baud + " baud, " + GW.stopbits + " stop bit" + (GW.stopbits > 1 ? "s" : "") + ")." + (Object.keys(DEFS).length ? "" : " Click \"Load module database\" (or \"Import database…\") to enable the module editor."));
 }
-// Lecture de la base sur le DSP : la passerelle lit en tache de fond (de 25 s a plusieurs
-// minutes selon l'appareil) ; on suit l'avancement sans limite de duree cote page.
+// Reading the database from the DSP: the gateway reads in the background (25 s to several
+// minutes depending on the unit); the page follows progress with no time limit.
 const mmss = t => Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0");
 async function dbaseFollow() {
   $("bDbase").disabled = $("bDbaseFile").disabled = true;
@@ -875,13 +875,13 @@ $("dbFile").onchange = async () => {
 $("bQuit").onclick = async () => {
   const unsaved = hist.i !== hist.saved ? " The patch has unsaved changes." : "";
   if (!(await ask("Quit MSIG? The serial port will be released and this page will stop responding." + unsaved))) return;
-  try { await api("quit"); } catch (e) { /* le serveur s'arrete */ }
+  try { await api("quit"); } catch (e) { /* the server is shutting down */ }
   document.body.dataset.stopped = "1";
   document.body.innerHTML = "<p style='padding:2em'>MSIG has stopped. You can close this tab.</p>";
 };
 (async () => {
   if (!/^https?:$/.test(location.protocol)) return;
-  try { GW = await gwStatus(); } catch (e) { return; /* pas de passerelle : mode Web Serial */ }
+  try { GW = await gwStatus(); } catch (e) { return; /* no gateway: Web Serial mode */ }
   $("bConnect").onclick = gwConnect;
   gwShow();
   setInterval(() => fetch("/api/ping", { method: "POST" }).catch(() => {}), 20000);
@@ -893,9 +893,9 @@ $("bQuit").onclick = async () => {
   else status("Connected to the DSP via the gateway (" + GW.port + ").");
 })();
 
-// ---------------------------------------------------------------- annuler / retablir, presse-papiers
-// Chaque etat du patch (modules, valeurs, positions) est conserve sous forme de texte JSON.
-const hist = { stack: [], i: -1, max: 200, saved: 0 };  // saved : etape enregistree (pas de modification en cours)
+// ---------------------------------------------------------------- undo / redo, clipboard
+// Each patch state (modules, values, positions) is stored as JSON text.
+const hist = { stack: [], i: -1, max: 200, saved: 0 };  // saved: the saved step (no pending changes)
 function record() {
   const s = JSON.stringify({ mods: doc.mods, extra: doc.extra });
   if (hist.stack[hist.i] === s) return;
@@ -922,7 +922,7 @@ function copySel(quiet) {
   const m = selected;
   clip = { type: m.type, name: m.name, args: [...m.args], pos: m.pos ? { ...m.pos } : null };
   if (!quiet) {
-    try { navigator.clipboard.writeText([m.type, m.name].concat(m.args).join(" ")).catch(() => {}); } catch (e) { /* facultatif */ }
+    try { navigator.clipboard.writeText([m.type, m.name].concat(m.args).join(" ")).catch(() => {}); } catch (e) { /* optional */ }
     status(`Module ${m.name} copied.`);
   }
   return true;
@@ -940,7 +940,7 @@ function pasteClip() {
   doc.mods.splice(ti < 0 ? doc.mods.length : ti, 0, m);
   const p = clip.pos || { x: (-view.x + 300) / view.k, y: (-view.y + 120) / view.k };
   m.pos = { x: p.x + 30, y: p.y + 30 };
-  clip.pos = { ...m.pos };  // collages successifs en cascade
+  clip.pos = { ...m.pos };  // successive pastes cascade
   select(m); changed();
   status(`Module ${m.type} ${m.name} pasted.`);
 }
@@ -969,7 +969,7 @@ document.addEventListener("pointerdown", ev => { if (!ev.target.closest(".menu")
 
 document.addEventListener("keydown", ev => {
   const t = ev.target;
-  // dans un champ de saisie, les raccourcis gardent leur role habituel (annuler la frappe, copier le texte...)
+  // in a text field, shortcuts keep their usual role (undo typing, copy text...)
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
   if ($("dScreen").open || asking()) return;
   const mod = ev.metaKey || ev.ctrlKey, k = ev.key.toLowerCase();
@@ -986,9 +986,9 @@ document.addEventListener("keydown", ev => {
   else if (k === "escape") { $("mEdit").hidden = true; if (selected) { selected = null; renderInspector(); render(); } }
 });
 
-// ---------------------------------------------------------------- cables a la souris
-// Tirer d'une pastille a une autre cree la connexion (types compatibles uniquement) ;
-// double-clic : entree -> valeur par defaut ; sortie -> retire tous ses cables.
+// ---------------------------------------------------------------- mouse cabling
+// Dragging from one port dot to another creates the connection (compatible types only);
+// double-click: input -> default value; output -> removes all its cables.
 let revealCtl = false;
 function inType(m, i) {
   const l = labelsOf(m)[i];
@@ -1030,7 +1030,7 @@ function startCable(ev, el) {
   });
   const begin = () => {
     started = true;
-    // les entrees de controle ne sont affichees que pendant un glisser depuis une sortie de controle
+    // control inputs are only shown while dragging from a control output
     if (from.type === "ctl_out") { revealCtl = true; render(); }
     p0 = portPos[key];
     mark();
@@ -1045,7 +1045,7 @@ function startCable(ev, el) {
   };
   const up = e2 => {
     window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
-    if (!started) return;  // simple clic (ou premier clic d'un double-clic) : rien a faire
+    if (!started) return;  // single click (or first click of a double-click): nothing to do
     $("drag").innerHTML = "";
     const target = document.elementFromPoint(e2.clientX, e2.clientY);
     const to = target && target.classList && target.classList.contains("pin") ? pinInfo(target) : null;
@@ -1097,10 +1097,10 @@ $("svg").addEventListener("dblclick", async ev => {
   status(`${uses.length} cable${uses.length > 1 ? "s" : ""} removed from ${src}.`);
 });
 
-// ---------------------------------------------------------------- menus de la fenetre native
+// ---------------------------------------------------------------- native window menus
 let lastShortcut = 0;
 window.msigMenu = act => {
-  if (Date.now() - lastShortcut < 300 || asking()) return;  // deja traite par le raccourci clavier, ou question ouverte
+  if (Date.now() - lastShortcut < 300 || asking()) return;  // already handled by the keyboard shortcut, or a question is open
   const click = id => { const b = $(id); if (b && !b.disabled) b.click(); else status("Not available now.", true); };
   const map = {
     new: () => click("bNew"), random: () => $("bRandom").onclick({}), randomSeed: () => $("bRandom").onclick({ shiftKey: true }),
@@ -1113,22 +1113,22 @@ window.msigMenu = act => {
   if (fn) fn();
 };
 if (NATIVE) {
-  // la barre de menus remplace le menu Edit de la page ; fermer la fenetre quitte MSIG
+  // the menu bar replaces the page's Edit menu; closing the window quits MSIG
   document.body.classList.add("native");
 } else {
-  // navigateur : prevenir avant de fermer l'onglet si le patch n'est pas enregistre
+  // browser: warn before closing the tab if the patch is not saved
   window.addEventListener("beforeunload", ev => {
     if (document.body.dataset.stopped || hist.i === hist.saved) return;
     ev.preventDefault(); ev.returnValue = "";
   });
 }
 if (!IS_MAC) {
-  // Linux, Windows : raccourcis avec Ctrl
+  // Linux, Windows: Ctrl shortcuts
   document.querySelectorAll("kbd").forEach(k => { k.textContent = k.textContent.replace("⇧⌘", "Ctrl+Shift+").replace("⌘", "Ctrl+"); });
   document.querySelectorAll("[title]").forEach(e => { e.title = e.title.replace("⇧⌘", "Ctrl+Shift+").replace("⌘", "Ctrl+"); });
 }
 
-// demarrage
+// startup
 autoLayout(); changed(); hist.saved = hist.i;
 </script>
 </body>

@@ -1,8 +1,8 @@
-"""Assemble l'editeur (fichier HTML unique) a partir des sources.
+"""Builds the editor (single HTML file) from the sources.
 
-  msig_editeur.html         : base des modules integree (usage personnel, fonctionne hors ligne)
-  msig_editeur_public.html  : sans la base des modules, qui appartient au fabricant ; elle est lue
-                              sur le DSP de l'utilisateur par la passerelle (version distribuee)
+  msig_editeur.html         : module database embedded (personal use, works offline)
+  msig_editeur_public.html  : without the module database, which belongs to the manufacturer; it is
+                              read from the user's DSP by the gateway (distributed version)
 """
 import json, os
 d = os.path.dirname(os.path.abspath(__file__))
@@ -17,4 +17,4 @@ if os.path.exists(mp):
 for name, defs in builds.items():
     out = base.replace("/*DEFS*/", defs)
     open(os.path.join(d, name), "w", encoding="utf-8").write(out)
-    print(name, len(out), "octets")
+    print(name, len(out), "bytes")
